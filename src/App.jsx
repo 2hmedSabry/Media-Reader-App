@@ -23,7 +23,11 @@ import {
   X,
   Settings,
   Github,
-  Twitter
+  Twitter,
+  Type,
+  Layout,
+  Keyboard,
+  Palette
 } from 'lucide-react';
 
 const App = () => {
@@ -51,13 +55,19 @@ const App = () => {
   const [toast, setToast] = useState(null);
   const [countdown, setCountdown] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'default');
-  const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('shortcuts');
+  const [fontSize, setFontSize] = useState(parseInt(localStorage.getItem('app-fontSize')) || 16);
   const videoRef = React.useRef(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('app-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('app-fontSize', fontSize);
+  }, [fontSize]);
 
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => 
@@ -498,7 +508,7 @@ const App = () => {
           <div className="sidebar-header">
             <div className="brand">
               <MonitorPlay size={24} className="accent-color" style={{ color: 'var(--accent)' }} />
-              <span>CourseReader</span>
+              <span>Media Reader</span>
             </div>
             <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={addCourse}>
               <FolderPlus size={18} />
@@ -521,50 +531,196 @@ const App = () => {
               </div>
             ))}
           </div>
-
-          <div className="sidebar-footer">
-            <div className="settings-btn" onClick={() => setIsThemePickerOpen(!isThemePickerOpen)}>
-              <Settings size={18} />
+  
+            <div className="sidebar-footer">
+              <div className="settings-btn" onClick={() => setIsSettingsOpen(true)}>
+                <Settings size={18} />
+              </div>
+              
+              <div className="social-links">
+                <a href="https://github.com/2hmedSabry" target="_blank" rel="noopener noreferrer" className="social-icon">
+                  <Github size={16} />
+                </a>
+                <a href="https://twitter.com/2hmedsabri" target="_blank" rel="noopener noreferrer" className="social-icon">
+                  <Twitter size={16} />
+                </a>
+                <div className="developer-info">Ahmed Sabry</div>
+              </div>
             </div>
-            
-            <div className="social-links">
-              <a href="https://github.com/2hmedSabry" target="_blank" rel="noopener noreferrer" className="social-icon">
-                <Github size={16} />
-              </a>
-              <a href="https://twitter.com/2hmedsabri" target="_blank" rel="noopener noreferrer" className="social-icon">
-                <Twitter size={16} />
-              </a>
-              <div className="developer-info">Ahmed Sabry</div>
-            </div>
+          </aside>
+        )}
+  
+        {/* Settings Overlay */}
+        {isSettingsOpen && (
+          <div className="settings-overlay" onClick={() => setIsSettingsOpen(false)}>
+            <div className="settings-card" onClick={e => e.stopPropagation()}>
+              <div className="settings-header">
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Settings size={24} className="accent-color" style={{ color: 'var(--accent)' }} /> 
+                  Settings & Preferences
+                </h2>
+                <button className="icon-btn" onClick={() => setIsSettingsOpen(false)}><X size={20} /></button>
+              </div>
+              
+              <div className="settings-content">
+                <div className="settings-tabs">
+                  <div className={`settings-tab ${activeTab === 'shortcuts' ? 'active' : ''}`} onClick={() => setActiveTab('shortcuts')}>
+                    <Keyboard size={18} /> Shortcuts
+                  </div>
+                  <div className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`} onClick={() => setActiveTab('appearance')}>
+                    <Palette size={18} /> Appearance
+                  </div>
+                  <div className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
+                    <Layout size={18} /> General
+                  </div>
+                </div>
+  
+                <div className="settings-panel">
+                  {activeTab === 'shortcuts' && (
+                    <div className="settings-section">
+                      <h3>Video Controls</h3>
+                      <div className="shortcut-grid">
+                        {[
+                          { label: 'Play / Pause', keys: ['Space'], desc: 'Toggle video playback' },
+                          { label: 'Seek Forward', keys: ['→'], desc: 'Skip ahead 10 seconds' },
+                          { label: 'Seek Backward', keys: ['←'], desc: 'Go back 10 seconds' },
+                          { label: 'Speed Up', keys: [']'], desc: 'Increase playback rate by 0.25x' },
+                          { label: 'Speed Down', keys: ['['], desc: 'Decrease playback rate by 0.25x' },
+                          { label: 'Full Screen', keys: ['F'], desc: 'Toggle fullscreen mode' },
+                        ].map((s, idx) => (
+                          <div key={idx} className="shortcut-item">
+                            <div>
+                              <div style={{ fontWeight: 500, marginBottom: '4px' }}>{s.label}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.desc}</div>
+                            </div>
+                            <div className="kbd-group">
+                              {s.keys.map(k => <kbd key={k}>{k}</kbd>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
 
-            {isThemePickerOpen && (
-              <div className="theme-picker-modal">
-                <div 
-                  className={`theme-option ${theme === 'default' ? 'active' : ''}`} 
-                  onClick={() => { setTheme('default'); setIsThemePickerOpen(false); }}
-                >
-                  <span style={{ backgroundColor: '#6366f1' }}></span>
-                  Default Theme
-                </div>
-                <div 
-                  className={`theme-option ${theme === 'ocean' ? 'active' : ''}`} 
-                  onClick={() => { setTheme('ocean'); setIsThemePickerOpen(false); }}
-                >
-                  <span style={{ backgroundColor: '#5F9598' }}></span>
-                  Oceanic
-                </div>
-                <div 
-                  className={`theme-option ${theme === 'warm' ? 'active' : ''}`} 
-                  onClick={() => { setTheme('warm'); setIsThemePickerOpen(false); }}
-                >
-                  <span style={{ backgroundColor: '#FF9B51' }}></span>
-                  Sunset
+                      <h3 style={{ marginTop: '40px' }}>Navigation</h3>
+                      <div className="shortcut-grid">
+                        {[
+                          { label: 'Next Lesson', keys: ['N'], desc: 'Jump to next video' },
+                          { label: 'Previous Lesson', keys: ['P'], desc: 'Jump to previous video' },
+                          { label: 'Search', keys: ['Ctrl', 'F'], desc: 'Open search modal' },
+                          { label: 'Close Search', keys: ['Esc'], desc: 'Close search or modals' },
+                        ].map((s, idx) => (
+                          <div key={idx} className="shortcut-item">
+                            <div>
+                              <div style={{ fontWeight: 500, marginBottom: '4px' }}>{s.label}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.desc}</div>
+                            </div>
+                            <div className="kbd-group">
+                              {s.keys.map(k => <kbd key={k}>{k}</kbd>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <h3 style={{ marginTop: '40px' }}>Subtitles & Capture</h3>
+                      <div className="shortcut-grid">
+                        {[
+                          { label: 'Toggle Subtitles', keys: ['C'], desc: 'Show/hide subtitles' },
+                          { label: 'Select Subtitle', keys: ['V'], desc: 'Open subtitle picker' },
+                          { label: 'Take Snapshot', keys: ['S'], desc: 'Capture current frame as image' },
+                        ].map((s, idx) => (
+                          <div key={idx} className="shortcut-item">
+                            <div>
+                              <div style={{ fontWeight: 500, marginBottom: '4px' }}>{s.label}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.desc}</div>
+                            </div>
+                            <div className="kbd-group">
+                              {s.keys.map(k => <kbd key={k}>{k}</kbd>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+  
+                  {activeTab === 'appearance' && (
+                    <div className="settings-section">
+                      <h3>Global Theme</h3>
+                      <div className="theme-grid">
+                        <div className={`theme-card ${theme === 'default' ? 'active' : ''}`} onClick={() => setTheme('default')}>
+                          <div className="theme-preview" style={{ background: '#080a0f' }}>
+                            <div style={{ background: '#6366f1', opacity: 0.5 }}></div>
+                            <div style={{ background: '#11141d' }}></div>
+                          </div>
+                          Default Dark
+                        </div>
+                        <div className={`theme-card ${theme === 'ocean' ? 'active' : ''}`} onClick={() => setTheme('ocean')}>
+                          <div className="theme-preview" style={{ background: '#061E29' }}>
+                            <div style={{ background: '#5f9598', opacity: 0.5 }}></div>
+                            <div style={{ background: '#0a2432' }}></div>
+                          </div>
+                          Oceanic
+                        </div>
+                        <div className={`theme-card ${theme === 'warm' ? 'active' : ''}`} onClick={() => setTheme('warm')}>
+                          <div className="theme-preview" style={{ background: '#f0f4f4' }}>
+                            <div style={{ background: '#ff9b51', opacity: 0.5 }}></div>
+                            <div style={{ background: '#ffffff' }}></div>
+                          </div>
+                          Sunset Light
+                        </div>
+                      </div>
+  
+                      <h3 style={{ marginTop: '40px' }}>Typography</h3>
+                      <div className="settings-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <Type size={18} />
+                          <span>Global Font Size</span>
+                        </div>
+                        <div className="control-group">
+                          <input 
+                            type="range" 
+                            min="12" 
+                            max="24" 
+                            value={fontSize} 
+                            onChange={(e) => setFontSize(parseInt(e.target.value))} 
+                          />
+                          <span style={{ minWidth: '40px' }}>{fontSize}px</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+  
+                  {activeTab === 'general' && (
+                    <div className="settings-section">
+                      <h3>App Configuration</h3>
+                      <div className="settings-row">
+                        <span>Explorer Sidebar Width</span>
+                        <div className="control-group">
+                          <input 
+                            type="range" 
+                            min="300" 
+                            max="600" 
+                            value={explorerWidth} 
+                            onChange={(e) => setExplorerWidth(parseInt(e.target.value))} 
+                          />
+                          <span>{explorerWidth}px</span>
+                        </div>
+                      </div>
+                      <div className="settings-row">
+                        <span>Autoplay Next Lesson</span>
+                        <button 
+                          className={`btn-ghost ${isAutoplay ? 'active-accent' : ''}`}
+                          onClick={() => setIsAutoplay(!isAutoplay)}
+                        >
+                          {isAutoplay ? 'Enabled' : 'Disabled'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
-        </aside>
-      )}
+        )}
+  
 
       {/* Main View */}
       <main className="main-view">
@@ -866,7 +1022,7 @@ const App = () => {
                     ) : selectedFile.type === 'pdf' ? (
                       <embed src={`file://${selectedFile.path}`} type="application/pdf" className="pdf-viewer" />
                     ) : fileContent !== null ? (
-                      <pre className="text-viewer">{fileContent}</pre>
+                      <pre className="text-viewer" style={{ fontSize: `${fontSize}px` }}>{fileContent}</pre>
                     ) : (
                       <div className="empty-state">
                         <FileIcon size={48} style={{ marginBottom: '16px', opacity: 0.2 }} />
