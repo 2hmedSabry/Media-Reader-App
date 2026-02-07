@@ -1190,42 +1190,31 @@ input[type="range"] {
 }
 
 /* Aesthetic Image Classes */
+/* Aesthetic Image Classes - Fixed Cropping */
 .welcome-visual {
-  width: 320px;
-  height: 200px;
-  background: url('./assets/liabrary.avif') center/cover no-repeat;
-  border-radius: var(--radius-lg);
-  margin-bottom: 40px;
+  width: 400px;
+  height: 300px;
+  background: url('./assets/liabrary.avif') center/contain no-repeat;
+  margin-bottom: 20px;
   position: relative;
 }
 
-.welcome-visual::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(0deg, var(--bg-surface) 0%, transparent 50%);
-}
+/* Removed ::after overlay to prevent obscuring the image */
 
 .video-empty-visual {
   width: 400px;
-  height: 240px;
-  background: url('./assets/screen.avif') center/cover no-repeat;
-  border-radius: var(--radius-lg);
+  height: 300px;
+  background: url('./assets/screen.avif') center/contain no-repeat;
   margin-bottom: 24px;
-  opacity: 0.2;
-  filter: grayscale(1) blur(2px);
-  mask-image: linear-gradient(to bottom, black, transparent);
+  opacity: 0.8;
 }
 
 .search-empty-visual {
   width: 180px;
   height: 120px;
-  background: url('./assets/search.avif') center/cover no-repeat;
-  border-radius: var(--radius-md);
+  background: url('./assets/search.avif') center/contain no-repeat;
   margin: 0 auto 20px;
-  opacity: 0.4;
-  filter: hue-rotate(280deg);
+  opacity: 0.6;
 }
 
 
