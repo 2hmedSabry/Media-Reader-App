@@ -13,7 +13,9 @@ import {
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
-  Volume2
+  Volume2,
+  Search,
+  Command
 } from 'lucide-react';
 
 const App = () => {
@@ -28,6 +30,8 @@ const App = () => {
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [progress, setProgress] = useState({});
   const videoRef = React.useRef(null);
 
@@ -53,6 +57,19 @@ const App = () => {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Search shortcut
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+        setSearchQuery('');
+        return;
+      }
+
+      if (isSearchOpen) {
+        if (e.key === 'Escape') setIsSearchOpen(false);
+        return;
+      }
+
       if (!selectedFile) return;
       const video = videoRef.current;
       
@@ -90,7 +107,7 @@ const App = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedFile, allFiles]);
+  }, [selectedFile, allFiles, isSearchOpen]);
 
   useEffect(() => {
     if (selectedCourse) {
@@ -236,6 +253,14 @@ const App = () => {
     return { lessons, resources, groups };
   }, [allFiles, viewMode]);
 
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery) return [];
+    return allFiles.filter(f => 
+      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.folder && f.folder.toLowerCase().includes(searchQuery.toLowerCase()))
+    ).slice(0, 8); // Limit to top 8 results
+  }, [allFiles, searchQuery]);
+
   return (
     <div 
       className={`app-container ${isDragging ? 'dragging' : ''}`}
@@ -243,6 +268,53 @@ const App = () => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Search Overlay */}
+      {isSearchOpen && (
+        <div className="search-overlay" onClick={() => setIsSearchOpen(false)}>
+          <div className="search-modal" onClick={e => e.stopPropagation()}>
+            <div className="search-input-wrapper">
+              <Search size={18} className="search-icon" />
+              <input 
+                autoFocus
+                placeholder="Search lessons or folders... (Esc to close)"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && filteredFiles.length > 0) {
+                    handleFileClick(filteredFiles[0]);
+                    setIsSearchOpen(false);
+                  }
+                  if (e.key === 'Escape') {
+                    setIsSearchOpen(false);
+                  }
+                }}
+                className="search-input"
+              />
+            </div>
+            <div className="search-results">
+              {filteredFiles.map((file, idx) => (
+                <div 
+                  key={idx} 
+                  className="search-result-item"
+                  onClick={() => {
+                    handleFileClick(file);
+                    setIsSearchOpen(false);
+                  }}
+                >
+                  <Play size={14} className="icon" style={{ opacity: 0.5 }} />
+                  <div className="result-info">
+                    <span className="result-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                    {file.folder && <span className="result-folder">{file.folder}</span>}
+                  </div>
+                </div>
+              ))}
+              {searchQuery && filteredFiles.length === 0 && (
+                <div className="no-results">No lessons found matching "{searchQuery}"</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       {isSidebarVisible && (
         <aside className="sidebar">
