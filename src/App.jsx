@@ -310,13 +310,20 @@ const App = () => {
     return { lessons, resources, groups };
   }, [allFiles, viewMode]);
 
-  const filteredFiles = useMemo(() => {
-    if (!searchQuery) return [];
-    return allFiles.filter(f => 
-      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (f.folder && f.folder.toLowerCase().includes(searchQuery.toLowerCase()))
-    ).slice(0, 8); // Limit to top 8 results
-  }, [allFiles, searchQuery]);
+  const searchResults = useMemo(() => {
+    if (!searchQuery) return { lessons: [], library: [] };
+    const query = searchQuery.toLowerCase();
+    
+    return {
+      lessons: allFiles.filter(f => 
+        ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type) &&
+        f.name.toLowerCase().includes(query)
+      ).slice(0, 5),
+      library: courses.filter(c => 
+        c.name.toLowerCase().includes(query)
+      ).slice(0, 4)
+    };
+  }, [allFiles, courses, searchQuery]);
 
   return (
     <div 
@@ -337,36 +344,67 @@ const App = () => {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && filteredFiles.length > 0) {
-                    handleFileClick(filteredFiles[0]);
-                    setIsSearchOpen(false);
+                  if (e.key === 'Enter') {
+                    if (searchResults.lessons.length > 0) {
+                      handleFileClick(searchResults.lessons[0]);
+                      setIsSearchOpen(false);
+                    } else if (searchResults.library.length > 0) {
+                      setSelectedCourse(searchResults.library[0]);
+                      setIsSearchOpen(false);
+                    }
                   }
-                  if (e.key === 'Escape') {
-                    setIsSearchOpen(false);
-                  }
+                  if (e.key === 'Escape') setIsSearchOpen(false);
                 }}
                 className="search-input"
               />
             </div>
             <div className="search-results">
-              {filteredFiles.map((file, idx) => (
-                <div 
-                  key={idx} 
-                  className="search-result-item"
-                  onClick={() => {
-                    handleFileClick(file);
-                    setIsSearchOpen(false);
-                  }}
-                >
-                  <Play size={14} className="icon" style={{ opacity: 0.5 }} />
-                  <div className="result-info">
-                    <span className="result-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
-                    {file.folder && <span className="result-folder">{file.folder}</span>}
-                  </div>
+              {searchResults.lessons.length > 0 && (
+                <div className="search-category">
+                  <div className="category-header">In this Course</div>
+                  {searchResults.lessons.map((file, idx) => (
+                    <div 
+                      key={`file-${idx}`} 
+                      className="search-result-item"
+                      onClick={() => {
+                        handleFileClick(file);
+                        setIsSearchOpen(false);
+                      }}
+                    >
+                      <Play size={14} className="icon" style={{ opacity: 0.5 }} />
+                      <div className="result-info">
+                        <span className="result-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                        {file.folder && <span className="result-folder">{file.folder}</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {searchQuery && filteredFiles.length === 0 && (
-                <div className="no-results">No lessons found matching "{searchQuery}"</div>
+              )}
+
+              {searchResults.library.length > 0 && (
+                <div className="search-category">
+                  <div className="category-header">Library & Courses</div>
+                  {searchResults.library.map((course, idx) => (
+                    <div 
+                      key={`course-${idx}`} 
+                      className="search-result-item"
+                      onClick={() => {
+                        setSelectedCourse(course);
+                        setIsSearchOpen(false);
+                      }}
+                    >
+                      <Library size={14} className="icon" style={{ color: 'var(--accent)' }} />
+                      <div className="result-info">
+                        <span className="result-name">{course.name}</span>
+                        <span className="result-folder">Course Folder</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {searchQuery && searchResults.lessons.length === 0 && searchResults.library.length === 0 && (
+                <div className="no-results">No matches found for "{searchQuery}"</div>
               )}
             </div>
           </div>
