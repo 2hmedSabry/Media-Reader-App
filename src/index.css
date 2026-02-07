@@ -209,6 +209,102 @@ body {
   border: 1px solid var(--border);
 }
 
+.explorer-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 12px;
+}
+
+.view-toggle-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 12px;
+}
+
+.view-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.folder-group {
+  margin-bottom: 8px;
+}
+
+.folder-name {
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.folder-name.clickable {
+  cursor: pointer;
+}
+
+.folder-name.clickable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.folder-group.active .folder-name {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chevron {
+  transition: transform 0.2s ease;
+  opacity: 0.5;
+}
+
+.chevron.rotated {
+  transform: rotate(90deg);
+}
+
+.folder-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  font-size: 0.7rem;
+  background: var(--bg-elevated);
+  padding: 2px 8px;
+  border-radius: 10px;
+  opacity: 0.6;
+}
+
+.folder-content {
+  padding-left: 12px;
+  margin-top: 4px;
+  border-left: 1px solid var(--border);
+  margin-left: 22px;
+}
+
 .lesson-number {
   font-size: 0.7rem;
   font-weight: 700;

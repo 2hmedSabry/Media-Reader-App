@@ -7,6 +7,8 @@ import {
   FolderPlus, 
   CheckCircle2, 
   Library,
+  List,
+  FolderTree,
   ChevronRight,
   MonitorPlay
 } from 'lucide-react';
@@ -18,6 +20,16 @@ const App = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileContent, setFileContent] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [viewMode, setViewMode] = useState('folders'); // 'flat' or 'folders'
+  const [expandedFolders, setExpandedFolders] = useState([]);
+
+  const toggleFolder = (folderName) => {
+    setExpandedFolders(prev => 
+      prev.includes(folderName) 
+        ? prev.filter(f => f !== folderName) 
+        : [...prev, folderName]
+    );
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -99,8 +111,27 @@ const App = () => {
   const categorized = useMemo(() => {
     const lessons = allFiles.filter(f => ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
     const resources = allFiles.filter(f => !['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
-    return { lessons, resources };
-  }, [allFiles]);
+
+    if (viewMode === 'flat') {
+      return { lessons, resources, groups: null };
+    }
+
+    // Group by folder
+    const groups = {};
+    lessons.forEach(f => {
+      const folder = f.folder || 'Main Folder';
+      if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
+      groups[folder].lessons.push(f);
+    });
+    
+    resources.forEach(f => {
+      const folder = f.folder || 'Main Folder';
+      if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
+      groups[folder].resources.push(f);
+    });
+
+    return { lessons, resources, groups };
+  }, [allFiles, viewMode]);
 
   return (
     <div 
@@ -152,38 +183,98 @@ const App = () => {
 
             <div className="content-wrapper">
               <div className="lesson-explorer">
-                <div className="explorer-section-title">Lessons</div>
+                <div className="explorer-header-row">
+                  <div className="explorer-section-title">Lessons</div>
+                  <button 
+                    className="view-toggle-btn" 
+                    onClick={() => setViewMode(viewMode === 'flat' ? 'folders' : 'flat')}
+                    title={viewMode === 'flat' ? "Show folders" : "Show flat list"}
+                  >
+                    {viewMode === 'flat' ? <FolderTree size={16} /> : <List size={16} />}
+                  </button>
+                </div>
+                
                 <div className="scroll-area">
-                  {categorized.lessons.map((file, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                      onClick={() => handleFileClick(file)}
-                    >
-                      <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
-                      <Play size={14} className="icon" style={{ opacity: 0.6 }} />
-                      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {file.name.replace(/\.[^/.]+$/, "")}
-                      </span>
-                      {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
-                    </div>
-                  ))}
-
-                  {categorized.resources.length > 0 && (
+                  {viewMode === 'folders' ? (
+                    Object.entries(categorized.groups).map(([folderName, group], gIdx) => {
+                      const isExpanded = expandedFolders.includes(folderName);
+                      return (
+                        <div key={folderName} className={`folder-group ${isExpanded ? 'active' : ''}`}>
+                          <div 
+                            className="folder-name clickable" 
+                            onClick={() => toggleFolder(folderName)}
+                          >
+                            <ChevronRight 
+                              size={14} 
+                              className={`chevron ${isExpanded ? 'rotated' : ''}`} 
+                            />
+                            <Folder size={14} style={{ opacity: 0.5 }} />
+                            <span className="folder-text">{folderName}</span>
+                            <span className="badge">{group.lessons.length}</span>
+                          </div>
+                          
+                          {isExpanded && (
+                            <div className="folder-content">
+                              {group.lessons.map((file, idx) => (
+                                <div 
+                                  key={`lesson-${idx}`} 
+                                  className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                  onClick={() => handleFileClick(file)}
+                                >
+                                  <Play size={12} className="icon" style={{ opacity: 0.4 }} />
+                                  <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                                  {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
+                                </div>
+                              ))}
+                              {group.resources.map((file, idx) => (
+                                <div 
+                                  key={`res-${idx}`} 
+                                  className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                  onClick={() => handleFileClick(file)}
+                                >
+                                  {file.type === 'pdf' ? <FileIcon size={12} className="icon" /> : <FileText size={12} className="icon" />}
+                                  <span className="file-name">{file.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
                     <>
-                      <div className="explorer-section-title" style={{ marginTop: '20px', paddingLeft: 0 }}>Resources</div>
-                      {categorized.resources.map((file, idx) => (
+                      {categorized.lessons.map((file, idx) => (
                         <div 
-                          key={`res-${idx}`} 
+                          key={idx} 
                           className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                           onClick={() => handleFileClick(file)}
                         >
-                          {file.type === 'pdf' ? <File size={14} className="icon" /> : <FileText size={14} className="icon" />}
-                          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {file.name}
+                          <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
+                          <Play size={14} className="icon" style={{ opacity: 0.6 }} />
+                          <span className="file-name">
+                            {file.name.replace(/\.[^/.]+$/, "")}
                           </span>
+                          {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
                         </div>
                       ))}
+
+                      {categorized.resources.length > 0 && (
+                        <>
+                          <div className="explorer-section-title" style={{ marginTop: '20px', paddingLeft: 0 }}>Resources</div>
+                          {categorized.resources.map((file, idx) => (
+                            <div 
+                              key={`res-${idx}`} 
+                              className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                              onClick={() => handleFileClick(file)}
+                            >
+                              {file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />}
+                              <span className="file-name">
+                                {file.name}
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
                     </>
                   )}
                 </div>

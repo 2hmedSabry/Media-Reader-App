@@ -49,16 +49,18 @@ ipcMain.handle('select-folder', async () => {
 
 ipcMain.handle('read-dir', async (event, dirPath) => {
   try {
-    const getAllFiles = (dir, allFiles = []) => {
+    const getAllFiles = (dir, rootDir, allFiles = []) => {
       const files = fs.readdirSync(dir, { withFileTypes: true });
       files.forEach(file => {
         const fullPath = path.join(dir, file.name);
         if (file.isDirectory()) {
-          getAllFiles(fullPath, allFiles);
+          getAllFiles(fullPath, rootDir, allFiles);
         } else {
+          const relativeDir = path.relative(rootDir, dir);
           allFiles.push({
             name: file.name,
             path: fullPath,
+            folder: relativeDir || '',
             type: path.extname(file.name).toLowerCase().replace('.', '')
           });
         }
@@ -66,7 +68,7 @@ ipcMain.handle('read-dir', async (event, dirPath) => {
       return allFiles;
     };
 
-    const files = getAllFiles(dirPath);
+    const files = getAllFiles(dirPath, dirPath);
     
     // Natural sort helper
     const naturalSort = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
