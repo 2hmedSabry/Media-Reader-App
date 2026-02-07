@@ -15,7 +15,10 @@ import {
   PanelLeftOpen,
   Volume2,
   Search,
-  Command
+  Command,
+  Subtitles,
+  Zap,
+  ZapOff
 } from 'lucide-react';
 
 const App = () => {
@@ -33,6 +36,9 @@ const App = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [progress, setProgress] = useState({});
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [subtitleUrl, setSubtitleUrl] = useState(null);
+  const [isAutoplay, setIsAutoplay] = useState(true);
   const videoRef = React.useRef(null);
 
   const toggleFolder = (folderName) => {
@@ -216,6 +222,8 @@ const App = () => {
     const fileProgress = courseProgress?.files?.[file.path];
     const initialTime = fileProgress ? fileProgress.time : 0;
     
+    setSubtitleUrl(null); // Clear previous subtitle URL
+
     // Switch immediately, the video component will handle the time restore via onLoadedMetadata
     if (['txt', 'md', 'js', 'json', 'py', 'css', 'html'].includes(file.type)) {
       const content = await window.electron.readFile(file.path);
@@ -226,6 +234,27 @@ const App = () => {
 
     if (file.folder) {
       setExpandedFolders(prev => prev.includes(file.folder) ? prev : [...prev, file.folder]);
+    }
+
+    // Auto-Subtitle Detection
+    if (['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(file.type)) {
+      const baseName = file.name.replace(/\.[^/.]+$/, "");
+      const subFile = allFiles.find(f => 
+        f.folder === file.folder && 
+        f.name.toLowerCase().startsWith(baseName.toLowerCase()) && 
+        ['srt', 'vtt'].includes(f.type.toLowerCase())
+      );
+
+      if (subFile) {
+        const content = await window.electron.getSubtitle(subFile.path);
+        if (content) {
+          if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+          const blob = new Blob([content], { type: 'text/vtt' });
+          setSubtitleUrl(URL.createObjectURL(blob));
+        }
+      } else {
+        setSubtitleUrl(null);
+      }
     }
 
     setTimeout(() => {
@@ -403,6 +432,13 @@ const App = () => {
                     <div className="explorer-section-title">Lessons</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button 
+                        className={`view-toggle-btn ${isAutoplay ? 'active-accent' : ''}`}
+                        onClick={() => setIsAutoplay(!isAutoplay)}
+                        title={isAutoplay ? 'Disable Autoplay' : 'Enable Autoplay'}
+                      >
+                        {isAutoplay ? <Zap size={15} /> : <ZapOff size={15} />}
+                      </button>
+                      <button 
                         className="view-toggle-btn" 
                         onClick={() => setViewMode(viewMode === 'flat' ? 'folders' : 'flat')}
                       >
@@ -543,23 +579,38 @@ const App = () => {
                         className="video-player" 
                         src={`file://${selectedFile.path}`} 
                         key={selectedFile.path}
-                        autoPlay
+                        autoPlay={isAutoplay}
                         onLoadedMetadata={(e) => {
                           e.target.playbackRate = playbackRate;
                           const savedProgress = progress[selectedCourse?.id]?.files?.[selectedFile.path];
                           if (savedProgress?.time) {
-                            e.target.currentTime = savedProgress.time;
+                            // If video was finished (near the end), restart from the beginning
+                            const isFinished = savedProgress.duration > 0 && 
+                                             (savedProgress.duration - savedProgress.time < 1.5 || 
+                                              savedProgress.time / savedProgress.duration > 0.98);
+                            
+                            e.target.currentTime = isFinished ? 0 : savedProgress.time;
                           }
                           updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
                         }}
-                        onEnded={playNext}
+                        onEnded={() => isAutoplay && playNext()}
                         onTimeUpdate={(e) => {
                           e.target.playbackRate = playbackRate;
                           if (Math.floor(e.target.currentTime) % 5 === 0) {
                             updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
                           }
                         }}
-                      />
+                      >
+                        {subtitleUrl && (
+                          <track 
+                            label="English"
+                            kind="subtitles"
+                            srcLang="en"
+                            src={subtitleUrl}
+                            default
+                          />
+                        )}
+                      </video>
                     ) : selectedFile.type === 'pdf' ? (
                       <embed src={`file://${selectedFile.path}`} type="application/pdf" className="pdf-viewer" />
                     ) : fileContent !== null ? (

@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('electron', {
   saveCourses: (courses) => ipcRenderer.invoke('save-courses', courses),
   saveProgress: (progress) => ipcRenderer.invoke('save-progress', progress),
   loadProgress: () => ipcRenderer.invoke('load-progress'),
+  getSubtitle: (path) => ipcRenderer.invoke('get-subtitle', path),
 });

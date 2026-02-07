@@ -273,6 +273,11 @@ body {
   color: var(--text-primary);
 }
 
+.view-toggle-btn.active-accent {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .folder-group {
   margin-bottom: 8px;
 }

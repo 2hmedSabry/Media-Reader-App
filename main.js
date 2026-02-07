@@ -96,6 +96,22 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('get-subtitle', async (event, filePath) => {
+  try {
+    let content = fs.readFileSync(filePath, 'utf8');
+    if (filePath.toLowerCase().endsWith('.srt')) {
+      // Simple SRT to VTT conversion
+      content = 'WEBVTT\n\n' + content
+        .replace(/,/g, '.')
+        .replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g, '$1.$2');
+    }
+    return content;
+  } catch (error) {
+    console.error('Error reading subtitle:', error);
+    return null;
+  }
+});
+
 // Storage for settings (courses)
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
