@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('electron', {
   selectFile: () => ipcRenderer.invoke('select-file'),
   saveSnapshot: (data) => ipcRenderer.invoke('save-snapshot', data),
   openPath: (path) => ipcRenderer.invoke('open-path', path),
+  isDirectory: (path) => ipcRenderer.invoke('is-directory', path),
+  handleNativeDrop: (path) => ipcRenderer.invoke('handle-native-drop', path),
 });

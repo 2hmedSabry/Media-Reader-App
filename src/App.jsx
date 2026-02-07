@@ -69,6 +69,25 @@ const App = () => {
     localStorage.setItem('app-fontSize', fontSize);
   }, [fontSize]);
 
+  // Listen for native file drops
+  useEffect(() => {
+    const handleNativeFileDrop = async (filePath) => {
+      console.log('🎯 React received native drop:', filePath);
+      const folderPath = await window.electron.handleNativeDrop(filePath);
+      if (folderPath) {
+        console.log('✅ Adding folder from native drop:', folderPath);
+        handleFolderSelection(folderPath);
+      }
+    };
+
+    // Make the function globally available for the injected script
+    window.handleNativeFileDrop = handleNativeFileDrop;
+
+    return () => {
+      delete window.handleNativeFileDrop;
+    };
+  }, [courses]);
+
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => 
       prev.includes(folderName) 
@@ -302,26 +321,78 @@ const App = () => {
     handleFolderSelection(path);
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFolderSelection(files[0].path);
+    
+    console.log('🎯 Drop event triggered');
+    
+    try {
+      const files = e.dataTransfer.files;
+      console.log('📁 Files count:', files?.length);
+      
+      if (!files || files.length === 0) {
+        console.log('❌ No files in drop event');
+        return;
+      }
+      
+      const firstFile = files[0];
+      console.log('📄 First file:', firstFile);
+      console.log('📍 File path:', firstFile.path);
+      console.log('📝 File name:', firstFile.name);
+      console.log('🔢 File size:', firstFile.size);
+      
+      const filePath = firstFile.path;
+      
+      if (!filePath) {
+        console.log('❌ No file path found');
+        return;
+      }
+      
+      // Check if it's a directory
+      console.log('🔍 Checking if directory...');
+      const isDir = await window.electron.isDirectory(filePath);
+      console.log('📂 Is directory:', isDir);
+      
+      let folderToAdd;
+      
+      if (isDir) {
+        // It's a folder - add it directly
+        folderToAdd = filePath;
+        console.log('✅ Adding folder directly:', folderToAdd);
+      } else {
+        // It's a file - get the parent directory
+        const pathParts = filePath.split(/[/\\]/);
+        pathParts.pop(); // Remove filename
+        folderToAdd = pathParts.join('/');
+        console.log('✅ Extracted parent folder:', folderToAdd);
+      }
+      
+      if (folderToAdd) {
+        console.log('🚀 Calling handleFolderSelection with:', folderToAdd);
+        handleFolderSelection(folderToAdd);
+      }
+    } catch (error) {
+      console.error('💥 Error handling drop:', error);
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.types.includes('Files')) setIsDragging(true);
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    // Only set dragging to false if we're leaving the app container
+    if (e.target.classList.contains('app-container')) {
+      setIsDragging(false);
+    }
   };
 
   const handleFileClick = async (file) => {
@@ -1044,14 +1115,14 @@ const App = () => {
         ) : (
           <div className="empty-state" style={{ padding: '80px 40px' }}>
             <div className="welcome-visual" />
-            <h1 style={{ fontWeight: 800, fontSize: '3rem', letterSpacing: '-0.04em' }}>Calm Study</h1>
+            <h1 style={{ fontWeight: 800, fontSize: '3rem', letterSpacing: '-0.04em' }}>Media Reader</h1>
             <p style={{ maxWidth: '440px', fontSize: '1.2rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '8px' }}>
-              A distraction-free space for your local courses. 
+              A distraction-free space for your local media. 
             </p>
             <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Add a folder to start your learning journey.</p>
             <button className="btn-primary" style={{ padding: '18px 36px', fontSize: '1.1rem' }} onClick={addCourse}>
               <FolderPlus size={22} />
-              Open Course Folder
+              Open Media Folder
             </button>
           </div>
         )}

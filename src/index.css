@@ -79,25 +79,43 @@ body {
 }
 
 .app-container.dragging {
-  background-color: var(--bg-surface);
-  box-shadow: inset 0 0 0 4px var(--accent);
+  position: relative;
 }
 
-.app-container.dragging::after {
-  content: 'Drop Folder Here to Add Course';
+.app-container.dragging .main-view {
+  position: relative;
+}
+
+.app-container.dragging .main-view::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  pointer-events: none;
+}
+
+.app-container.dragging .main-view::after {
+  content: 'Drop Folder Here to Add Media';
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   background: var(--bg-elevated);
-  padding: 20px 40px;
+  padding: 24px 48px;
   border-radius: var(--radius-lg);
   border: 2px dashed var(--accent);
   color: var(--accent);
   font-weight: 700;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   z-index: 1000;
   pointer-events: none;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
 }
 
 /* Sidebar */
@@ -1213,9 +1231,6 @@ input[type="range"] {
 
 
 .empty-state h1 {
-  background: linear-gradient(to right, #fff, var(--accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
   margin-bottom: 12px;
 }

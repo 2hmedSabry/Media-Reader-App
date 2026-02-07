@@ -21,9 +21,47 @@ function createWindow() {
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
+    mainWindow.webContents.openDevTools(); // Open DevTools automatically
   } else {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
+
+  // Handle file drops on the window
+  mainWindow.webContents.on('did-finish-load', () => {
+    // Listen for file drops
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+      // Prevent navigation when dropping files
+      if (url.startsWith('file://')) {
+        event.preventDefault();
+      }
+    });
+  });
+
+  // Handle dropped files
+  mainWindow.webContents.on('dom-ready', () => {
+    mainWindow.webContents.executeJavaScript(`
+      document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+          const filePath = files[0].path;
+          console.log('📦 Native drop - file path:', filePath);
+          
+          // Call React's handler if available
+          if (window.handleNativeFileDrop) {
+            window.handleNativeFileDrop(filePath);
+          }
+        }
+      });
+      
+      document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    `);
+  });
 }
 
 app.whenReady().then(() => {
@@ -164,4 +202,34 @@ ipcMain.handle('load-progress', () => {
 
 ipcMain.handle('save-courses', (event, courses) => {
   fs.writeFileSync(settingsPath, JSON.stringify(courses, null, 2));
+});
+
+ipcMain.handle('is-directory', async (event, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.isDirectory();
+  } catch (error) {
+    console.error('Error checking if directory:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('handle-native-drop', async (event, filePath) => {
+  try {
+    console.log('Main process received drop:', filePath);
+    const stats = fs.statSync(filePath);
+    
+    let folderPath;
+    if (stats.isDirectory()) {
+      folderPath = filePath;
+    } else {
+      folderPath = path.dirname(filePath);
+    }
+    
+    console.log('Folder to add:', folderPath);
+    return folderPath;
+  } catch (error) {
+    console.error('Error handling native drop:', error);
+    return null;
+  }
 });
