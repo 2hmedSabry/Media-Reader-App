@@ -10,6 +10,7 @@ import {
   List,
   FolderTree,
   ChevronRight,
+  ChevronDown,
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
@@ -37,7 +38,9 @@ import {
   Filter,
   Check,
   MoreHorizontal,
-  BarChart2
+  BarChart2,
+  HardDriveDownload,
+  Layers
 } from 'lucide-react';
 
 const App = () => {
@@ -76,9 +79,11 @@ const App = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
-  const [tempInput, setTempInput] = useState('');
   const [editingCourseId, setEditingCourseId] = useState(null); 
   const [taggingCourseId, setTaggingCourseId] = useState(null);
+  const [creatingGroupCourseId, setCreatingGroupCourseId] = useState(null);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [tempInput, setTempInput] = useState('');
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -223,9 +228,10 @@ const App = () => {
   }, [courses]);
 
   const toggleFolder = (folderName) => {
+    setSelectedFolderId(folderName);
     setExpandedFolders(prev => 
       prev.includes(folderName) 
-        ? prev.filter(f => f !== folderName) 
+        ? prev.filter(n => n !== folderName) 
         : [...prev, folderName]
     );
   };
@@ -568,29 +574,118 @@ const App = () => {
 
   // Grouping
   const categorized = useMemo(() => {
+    const virtualGroups = (selectedCourse?.groups || []).map(g => ({ ...g, lessons: [], resources: [] }));
+    const filesInGroups = new Set(virtualGroups.flatMap(g => g.files || []));
+
     const lessons = allFiles.filter(f => ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
     const resources = allFiles.filter(f => !['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
 
+    // Populate Virtual Groups
+    allFiles.forEach(f => {
+       if (filesInGroups.has(f.path)) {
+          const group = virtualGroups.find(g => g.files && g.files.includes(f.path));
+          if (group) {
+             if (['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type)) {
+                group.lessons.push(f);
+             } else {
+                group.resources.push(f);
+             }
+          }
+       }
+    });
+
     if (viewMode === 'flat') {
-      return { lessons, resources, groups: null };
+      return { lessons, resources, groups: null, virtualGroups };
     }
 
-    // Group by folder
+    // Group by physical folder
     const groups = {};
     lessons.forEach(f => {
+      if (filesInGroups.has(f.path)) return;
       const folder = f.folder || 'Main Folder';
       if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
       groups[folder].lessons.push(f);
     });
     
     resources.forEach(f => {
+      if (filesInGroups.has(f.path)) return;
       const folder = f.folder || 'Main Folder';
       if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
       groups[folder].resources.push(f);
     });
+    
+    // Merge & Sort
+    const physicalGroups = Object.entries(groups).map(([name, data]) => ({
+       id: name, // Physical folder name is ID
+       name: name,
+       lessons: data.lessons,
+       resources: data.resources,
+       isVirtual: false,
+       files: [], // No manual file tracking needed
+       subGroups: [] // For nested virtual groups
+    }));
+    
+    const rootVirtualGroups = [];
+    
+    virtualGroups.forEach(vg => {
+       if (vg.parentFolder) {
+          const parent = physicalGroups.find(pg => pg.name === vg.parentFolder);
+          if (parent) {
+             parent.subGroups.push(vg);
+          } else {
+             rootVirtualGroups.push(vg);
+          }
+       } else {
+          rootVirtualGroups.push(vg);
+       }
+    });
+    
+    const mergedGroups = [...rootVirtualGroups, ...physicalGroups].sort((a, b) => a.name.localeCompare(b.name));
 
-    return { lessons, resources, groups };
-  }, [allFiles, viewMode]);
+    return { lessons, resources, groups: mergedGroups }; // groups is now array
+  }, [allFiles, viewMode, selectedCourse]);
+
+  const handleCreateGroup = (arg) => {
+    // If called from onClick, arg is Event. If called directly, it's string or null.
+    let parentFolder = (typeof arg === 'string') ? arg : null;
+
+    if (!selectedCourse) return;
+    
+    // Auto-detect folder priority:
+    // 1. Explicit argument (Context Menu)
+    // 2. Selected Folder (User clicked folder header)
+    // 3. Selected File's Folder (Context of playing video)
+    if (!parentFolder && selectedFolderId) parentFolder = selectedFolderId;
+    if (!parentFolder && selectedFile && selectedFile.folder) parentFolder = selectedFile.folder;
+    
+    setTempInput('');
+    setCreatingGroupCourseId({ courseId: selectedCourse.id, parentFolder });
+  };
+
+  const handleGroupDrop = (e, groupId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const filePath = e.dataTransfer.getData('filePath');
+    if (!filePath || !selectedCourse) return;
+
+    const currentGroups = selectedCourse.groups || [];
+    const targetGroup = currentGroups.find(g => g.id === groupId);
+    
+    if (targetGroup && (!targetGroup.files || !targetGroup.files.includes(filePath))) {
+       const newGroups = currentGroups.map(g => {
+         // Add to target
+         if (g.id === groupId) {
+           return { ...g, files: [...(g.files || []), filePath] };
+         }
+         // Remove from source (other virtual groups)
+         if (g.files && g.files.includes(filePath)) {
+           return { ...g, files: g.files.filter(f => f !== filePath) };
+         }
+         return g;
+       });
+       updateCourse(selectedCourse.id, { groups: newGroups });
+    }
+  };
 
   const searchResults = useMemo(() => {
     if (!searchQuery) return { lessons: [], library: [] };
@@ -1036,6 +1131,13 @@ const App = () => {
                     <div className="explorer-section-title">Lessons</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button 
+                         className="view-toggle-btn"
+                         onClick={handleCreateGroup}
+                         title="Create Virtual Group"
+                      >
+                        <FolderPlus size={15} />
+                      </button>
+                      <button 
                         className={`view-toggle-btn ${isAutoplay ? 'active-accent' : ''}`}
                         onClick={() => setIsAutoplay(!isAutoplay)}
                         title={isAutoplay ? 'Disable Autoplay' : 'Enable Autoplay'}
@@ -1059,60 +1161,167 @@ const App = () => {
                 
                   <div className="scroll-area">
                     {viewMode === 'folders' ? (
-                      Object.entries(categorized.groups).map(([folderName, group]) => {
-                        const isExpanded = expandedFolders.includes(folderName);
+                      /* Unified Group Loop */
+                      categorized.groups.map(group => {
+                        const isExpanded = expandedFolders.includes(group.id);
+                        const isVirtual = group.isVirtual;
                         return (
-                          <div key={folderName} className={`folder-group ${isExpanded ? 'active' : ''}`}>
-                            <div className="folder-name clickable" onClick={() => toggleFolder(folderName)}>
-                              <ChevronRight size={14} className={`chevron ${isExpanded ? 'rotated' : ''}`} />
-                              <Folder size={14} style={{ opacity: 0.5 }} />
-                              <span className="folder-text">{folderName}</span>
-                              <span className="badge">{group.lessons.length}</span>
+                          <div 
+                            key={group.id} 
+                            className="folder-group"
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (group.isVirtual) e.currentTarget.classList.add('drag-over');
+                            }}
+                            onDragLeave={(e) => {
+                              e.currentTarget.classList.remove('drag-over');
+                            }}
+                            onDrop={(e) => {
+                              e.currentTarget.classList.remove('drag-over');
+                              if (group.isVirtual) {
+                                handleGroupDrop(e, group.id);
+                              }
+                            }}
+                          >
+                            <div 
+                              className={`lesson-item ${selectedFolderId === group.id ? 'active' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFolder(group.id);
+                              }}
+                            >
+                              <div className="item-main-content">
+                                {isExpanded ? <ChevronDown size={12} style={{ opacity: 0.4 }} /> : <ChevronRight size={12} style={{ opacity: 0.4 }} />}
+                                <Layers size={14} style={{ opacity: 0.5 }} />
+                                <span className="file-name" style={{ fontWeight: 500 }}>{group.name}</span>
+                                {group.isVirtual && <span className="badge">Virtual</span>}
+                              </div>
                             </div>
                             
                             {isExpanded && (
                               <div className="folder-content">
+                                {/* Nested Virtual Groups */}
+                                {(group.subGroups || []).map(subGroup => {
+                                  const isSubExpanded = expandedFolders.includes(subGroup.id);
+                                  return (
+                                    <div 
+                                      key={subGroup.id} 
+                                      className="folder-group sub-group"
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.currentTarget.classList.add('drag-over');
+                                      }}
+                                      onDragLeave={(e) => {
+                                        e.currentTarget.classList.remove('drag-over');
+                                      }}
+                                      onDrop={(e) => {
+                                        e.currentTarget.classList.remove('drag-over');
+                                        handleGroupDrop(e, subGroup.id);
+                                      }}
+                                    >
+                                      <div 
+                                        className={`lesson-item ${selectedFolderId === subGroup.id ? 'active' : ''}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleFolder(subGroup.id);
+                                        }}
+                                        style={{ opacity: 0.8 }}
+                                      >
+                                        <div className="item-main-content">
+                                          {isSubExpanded ? <ChevronDown size={10} style={{ opacity: 0.4 }} /> : <ChevronRight size={10} style={{ opacity: 0.4 }} />}
+                                          <Layers size={14} style={{ opacity: 0.5 }} />
+                                          <span className="file-name" style={{ fontSize: '0.85rem' }}>{subGroup.name}</span>
+                                          <span className="badge">Virtual</span>
+                                        </div>
+                                      </div>
+                                      
+                                      {isSubExpanded && (
+                                        <div className="folder-content">
+                                          {/* Sub-group Lessons */}
+                                          {subGroup.lessons && subGroup.lessons.map((file, idx) => (
+                                            <div 
+                                              key={`${subGroup.id}-L-${idx}`} 
+                                              className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                              onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                              draggable="true"
+                                              onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
+                                            >
+                                              <div className="item-main-content">
+                                                {selectedFile?.path === file.path ? (
+                                                  <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                                                ) : (
+                                                  <Play size={10} style={{ opacity: 0.4 }} />
+                                                )}
+                                                <span className="file-name" style={{ fontSize: '0.8rem', ...(selectedFile?.path === file.path ? { color: 'var(--accent)' } : {}) }}>
+                                                  {file.name.replace(/\.[^/.]+$/, "")}
+                                                </span>
+                                                {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {/* Sub-group Resources */}
+                                          {subGroup.resources && subGroup.resources.map((file, idx) => (
+                                            <div 
+                                              key={`${subGroup.id}-R-${idx}`} 
+                                              className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                              onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                              draggable="true"
+                                              onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
+                                            >
+                                              <div className="item-main-content">
+                                                {file.type === 'pdf' ? <FileIcon size={10} style={{ opacity: 0.5 }} /> : <FileText size={10} style={{ opacity: 0.5 }} />}
+                                                <span className="file-name" style={{ fontSize: '0.8rem', opacity: 0.8 }}>{file.name}</span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+
+                                {/* Files in this physical folder / virtual group */}
                                 {group.lessons.map((file, idx) => (
                                   <div 
-                                    key={`lesson-${idx}`} 
+                                    key={`${group.id}-L-${idx}`} 
                                     className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                    onClick={() => handleFileClick(file)}
+                                    onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                    draggable="true"
+                                    onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
                                   >
-                                  <div className="item-main-content">
-                                    {selectedFile?.path === file.path ? (
-                                      <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
-                                    ) : (
-                                      <Play size={12} className="icon" style={{ opacity: 0.4 }} />
-                                    )}
-                                    <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
-                                    {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
-                                  </div>
-                                  {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
-                                    <div className="mini-progress-bar">
-                                      <div 
-                                        className="mini-progress-fill" 
-                                        style={{ width: `${(progress[selectedCourse.id].files[file.path].time / progress[selectedCourse.id].files[file.path].duration) * 100}%` }}
-                                      />
+                                    <div className="item-main-content">
+                                      {selectedFile?.path === file.path ? (
+                                        <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                                      ) : (
+                                        <Play size={12} style={{ opacity: 0.4 }} />
+                                      )}
+                                      <span className="file-name" style={selectedFile?.path === file.path ? { color: 'var(--accent)' } : {}}>{file.name.replace(/\.[^/.]+$/, "")}</span>
+                                      {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
                                     </div>
-                                  )}
-                                </div>
-                              ))}
-                              {group.resources.map((file, idx) => (
-                                <div 
-                                  key={`res-${idx}`} 
-                                  className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                  onClick={() => handleFileClick(file)}
-                                >
-                                  <div className="item-main-content">
-                                    {selectedFile?.path === file.path ? (
-                                      <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
-                                    ) : (
-                                      file.type === 'pdf' ? <FileIcon size={12} className="icon" /> : <FileText size={12} className="icon" />
+                                    {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
+                                      <div className="mini-progress-bar">
+                                        <div className="mini-progress-fill" style={{ width: `${(progress[selectedCourse.id].files[file.path].time / progress[selectedCourse.id].files[file.path].duration) * 100}%` }} />
+                                      </div>
                                     )}
-                                    <span className="file-name">{file.name}</span>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                                
+                                {group.resources.map((file, idx) => (
+                                  <div 
+                                    key={`${group.id}-R-${idx}`} 
+                                    className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                    onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                    draggable="true"
+                                    onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
+                                  >
+                                    <div className="item-main-content">
+                                      {file.type === 'pdf' ? <FileIcon size={12} style={{ opacity: 0.5 }} /> : <FileText size={12} style={{ opacity: 0.5 }} />}
+                                      <span className="file-name" style={{ fontSize: '0.85rem' }}>{file.name}</span>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -1430,7 +1639,8 @@ const App = () => {
             onClick={() => { setEditingCourseId(contextMenu.courseId); setTempInput(courses.find(c => c.id === contextMenu.courseId)?.alias || courses.find(c => c.id === contextMenu.courseId)?.name); setContextMenu(null); }}>
             <Edit3 size={14} /> Rename Alias
           </button>
-          
+
+
           <button className="ctx-item" 
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
             onMouseEnter={e => e.target.style.background = 'var(--bg-hover)'}
@@ -1517,6 +1727,68 @@ const App = () => {
             </div>
             <div style={{ marginTop: '16px', textAlign: 'right' }}>
                <button className="btn-ghost" onClick={() => setTaggingCourseId(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Group Modal */}
+      {creatingGroupCourseId && (
+        <div className="modal-overlay" onClick={() => setCreatingGroupCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Create Virtual Group</h3>
+            <input 
+              value={tempInput}
+              onChange={e => setTempInput(e.target.value)}
+              autoFocus
+              className="search-input" 
+              style={{ width: '100%', marginBottom: '16px', background: 'var(--bg-deep)', padding: '10px' }}
+              placeholder="Enter group name..."
+              onKeyDown={(e) => {
+                 if (e.key === 'Enter' && tempInput.trim()) {
+                    const course = courses.find(c => c.id === creatingGroupCourseId.courseId);
+                    if (course) {
+                       const currentGroups = course.groups || [];
+                       if (currentGroups.find(g => g.name === tempInput.trim())) {
+                          alert("Group name already exists");
+                          return;
+                       }
+                       const newGroups = [...currentGroups, { 
+                          id: Date.now().toString(), 
+                          name: tempInput.trim(), 
+                          files: [],
+                          parentFolder: creatingGroupCourseId.parentFolder
+                       }];
+                       updateCourse(course.id, { groups: newGroups });
+                    }
+                    setCreatingGroupCourseId(null);
+                    setTempInput('');
+                 }
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn-ghost" onClick={() => setCreatingGroupCourseId(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => { 
+                 if (tempInput.trim()) {
+                    const course = courses.find(c => c.id === creatingGroupCourseId.courseId);
+                    if (course) {
+                       const currentGroups = course.groups || [];
+                       if (currentGroups.find(g => g.name === tempInput.trim())) {
+                          alert("Group name already exists");
+                          return;
+                       }
+                       const newGroups = [...currentGroups, { 
+                          id: Date.now().toString(), 
+                          name: tempInput.trim(), 
+                          files: [],
+                          parentFolder: creatingGroupCourseId.parentFolder
+                       }];
+                       updateCourse(course.id, { groups: newGroups });
+                    }
+                    setCreatingGroupCourseId(null);
+                    setTempInput('');
+                 }
+              }}>Create</button>
             </div>
           </div>
         </div>

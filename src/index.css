@@ -709,6 +709,14 @@ input[type="range"] {
 
 .folder-group {
   margin-bottom: 8px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.folder-group.drag-over {
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 .folder-name {
@@ -762,11 +770,15 @@ input[type="range"] {
 }
 
 .badge {
-  font-size: 0.7rem;
-  background: var(--bg-elevated);
+  font-size: 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent);
   padding: 2px 8px;
-  border-radius: 10px;
-  opacity: 0.6;
+  border-radius: 12px;
+  margin-left: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
 }
 
 .folder-content {
@@ -1222,4 +1234,20 @@ input[type="range"] {
 .empty-state h1 {
   color: var(--text-primary);
   margin-bottom: 12px;
+}
+
+/* Active Folder State */
+.folder-name.active-folder {
+  background-color: var(--bg-hover) !important;
+  border-left: 2px solid var(--accent) !important;
+  transition: all 0.2s ease;
+}
+
+.folder-name.active-folder .folder-text {
+  color: var(--accent) !important;
+}
+
+.folder-name.active-folder svg {
+  color: var(--accent) !important;
+  opacity: 1 !important;
 }
