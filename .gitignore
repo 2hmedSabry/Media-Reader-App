@@ -1,5 +1,53 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+release/
+*.dmg
+*.pkg
+*.exe
+*.deb
+*.rpm
+*.AppImage
+*.zip
+*.blockmap
+
+# Development
 .DS_Store
+.vscode/
+.idea/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron
+out/
+*.asar
+
+# Environment
 .env
+.env.local
+.env.production
+
+# Build configs
+builder-debug.yml
+builder-effective-config.yaml
+*.plist
+
+# User data (for testing)
+settings.json
+progress.json
+
+# Cache
+.cache/
+*.cache
+
+# Icon generation intermediates (keep only the final icons)
+build/icons/
+!build/icon.icns
+!build/icon.ico
+!build/icon.png

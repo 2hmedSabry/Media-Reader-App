@@ -72,10 +72,8 @@ const App = () => {
   // Listen for native file drops
   useEffect(() => {
     const handleNativeFileDrop = async (filePath) => {
-      console.log('🎯 React received native drop:', filePath);
       const folderPath = await window.electron.handleNativeDrop(filePath);
       if (folderPath) {
-        console.log('✅ Adding folder from native drop:', folderPath);
         handleFolderSelection(folderPath);
       }
     };
@@ -326,55 +324,40 @@ const App = () => {
     e.stopPropagation();
     setIsDragging(false);
     
-    console.log('🎯 Drop event triggered');
-    
     try {
       const files = e.dataTransfer.files;
-      console.log('📁 Files count:', files?.length);
       
       if (!files || files.length === 0) {
-        console.log('❌ No files in drop event');
         return;
       }
       
       const firstFile = files[0];
-      console.log('📄 First file:', firstFile);
-      console.log('📍 File path:', firstFile.path);
-      console.log('📝 File name:', firstFile.name);
-      console.log('🔢 File size:', firstFile.size);
-      
       const filePath = firstFile.path;
       
       if (!filePath) {
-        console.log('❌ No file path found');
         return;
       }
       
       // Check if it's a directory
-      console.log('🔍 Checking if directory...');
       const isDir = await window.electron.isDirectory(filePath);
-      console.log('📂 Is directory:', isDir);
       
       let folderToAdd;
       
       if (isDir) {
         // It's a folder - add it directly
         folderToAdd = filePath;
-        console.log('✅ Adding folder directly:', folderToAdd);
       } else {
         // It's a file - get the parent directory
         const pathParts = filePath.split(/[/\\]/);
         pathParts.pop(); // Remove filename
         folderToAdd = pathParts.join('/');
-        console.log('✅ Extracted parent folder:', folderToAdd);
       }
       
       if (folderToAdd) {
-        console.log('🚀 Calling handleFolderSelection with:', folderToAdd);
         handleFolderSelection(folderToAdd);
       }
     } catch (error) {
-      console.error('💥 Error handling drop:', error);
+      console.error('Error handling drop:', error);
     }
   };
 

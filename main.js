@@ -21,7 +21,8 @@ function createWindow() {
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools(); // Open DevTools automatically
+    // Open DevTools in development only
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
@@ -47,7 +48,6 @@ function createWindow() {
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
           const filePath = files[0].path;
-          console.log('📦 Native drop - file path:', filePath);
           
           // Call React's handler if available
           if (window.handleNativeFileDrop) {
