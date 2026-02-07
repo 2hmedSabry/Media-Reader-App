@@ -70,8 +70,15 @@ ipcMain.handle('read-dir', async (event, dirPath) => {
 
     const files = getAllFiles(dirPath, dirPath);
     
-    // Natural sort helper
-    const naturalSort = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    // Natural sort helper that considers folder first, then filename
+    const naturalSort = (a, b) => {
+      // Compare folders first
+      const folderCompare = a.folder.localeCompare(b.folder, undefined, { numeric: true, sensitivity: 'base' });
+      if (folderCompare !== 0) return folderCompare;
+      
+      // If in same folder, compare filenames
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    };
     
     return files.sort(naturalSort);
   } catch (error) {
@@ -97,6 +104,19 @@ ipcMain.handle('load-courses', () => {
     return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
   }
   return [];
+});
+
+const progressPath = path.join(app.getPath('userData'), 'progress.json');
+
+ipcMain.handle('save-progress', (event, progress) => {
+  fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2));
+});
+
+ipcMain.handle('load-progress', () => {
+  if (fs.existsSync(progressPath)) {
+    return JSON.parse(fs.readFileSync(progressPath, 'utf8'));
+  }
+  return {};
 });
 
 ipcMain.handle('save-courses', (event, courses) => {

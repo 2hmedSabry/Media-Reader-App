@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('electron', {
   readFile: (path) => ipcRenderer.invoke('read-file', path),
   loadCourses: () => ipcRenderer.invoke('load-courses'),
   saveCourses: (courses) => ipcRenderer.invoke('save-courses', courses),
+  saveProgress: (progress) => ipcRenderer.invoke('save-progress', progress),
+  loadProgress: () => ipcRenderer.invoke('load-progress'),
 });

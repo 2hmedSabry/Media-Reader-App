@@ -221,6 +221,7 @@ body {
   transition: all 0.2s;
   font-size: 0.9rem;
   color: var(--text-secondary);
+  border-left: 1px solid transparent;
 }
 
 .lesson-item:hover {
@@ -229,9 +230,20 @@ body {
 }
 
 .lesson-item.active {
-  background-color: var(--bg-elevated);
-  color: var(--accent);
-  border: 1px solid var(--border);
+  background-color: var(--accent-soft);
+  color: var(--text-primary);
+  border-left-color: var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.playing-icon {
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .explorer-header-row {

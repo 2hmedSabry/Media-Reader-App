@@ -12,7 +12,8 @@ import {
   ChevronRight,
   MonitorPlay,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Volume2
 } from 'lucide-react';
 
 const App = () => {
@@ -25,6 +26,9 @@ const App = () => {
   const [viewMode, setViewMode] = useState('folders'); // 'flat' or 'folders'
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [progress, setProgress] = useState({});
+  const videoRef = React.useRef(null);
 
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => 
@@ -36,11 +40,50 @@ const App = () => {
 
   useEffect(() => {
     const init = async () => {
-      const loaded = await window.electron.loadCourses();
-      setCourses(loaded);
+      const [loadedCourses, loadedProgress] = await Promise.all([
+        window.electron.loadCourses(),
+        window.electron.loadProgress()
+      ]);
+      setCourses(loadedCourses);
+      setProgress(loadedProgress || {});
     };
     init();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!selectedFile) return;
+      const video = videoRef.current;
+      
+      switch(e.key.toLowerCase()) {
+        case ' ':
+          e.preventDefault();
+          if (video) video.paused ? video.play() : video.pause();
+          break;
+        case 'f':
+          if (video) {
+            if (document.fullscreenElement) document.exitFullscreen();
+            else video.requestFullscreen();
+          }
+          break;
+        case 'arrowright':
+          if (video) video.currentTime += 10;
+          break;
+        case 'arrowleft':
+          if (video) video.currentTime -= 10;
+          break;
+        case 'n':
+          playNext();
+          break;
+        case 'p':
+          playPrev();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedFile, allFiles]);
 
   useEffect(() => {
     if (selectedCourse) {
@@ -48,19 +91,57 @@ const App = () => {
     }
   }, [selectedCourse]);
 
+  const playNext = () => {
+    const lessons = categorized.lessons;
+    const currentIndex = lessons.findIndex(f => f.path === selectedFile?.path);
+    if (currentIndex !== -1 && currentIndex < lessons.length - 1) {
+      handleFileClick(lessons[currentIndex + 1]);
+    }
+  };
+
+  const playPrev = () => {
+    const lessons = categorized.lessons;
+    const currentIndex = lessons.findIndex(f => f.path === selectedFile?.path);
+    if (currentIndex > 0) {
+      handleFileClick(lessons[currentIndex - 1]);
+    }
+  };
+
+  const updateProgress = (filePath, time) => {
+    if (!selectedCourse) return;
+    const newProgress = {
+      ...progress,
+      [selectedCourse.id]: {
+        lastFile: filePath,
+        time: time || 0
+      }
+    };
+    setProgress(newProgress);
+    window.electron.saveProgress(newProgress);
+  };
+
   const loadFiles = async (path) => {
     const files = await window.electron.readDir(path);
     setAllFiles(files);
-    // Auto-select first video if available
+    
+    // Restore progress
+    const courseProgress = progress[selectedCourse.id];
+    if (courseProgress) {
+      const lastFile = files.find(f => f.path === courseProgress.lastFile);
+      if (lastFile) {
+        handleFileClick(lastFile);
+        return;
+      }
+    }
+
+    // Auto-select first video if no progress
     const firstVideo = files.find(f => ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
     if (firstVideo) handleFileClick(firstVideo);
   };
 
   const handleFolderSelection = (path) => {
     if (path) {
-      // Check if course already exists
       if (courses.some(c => c.path === path)) return;
-
       const name = path.split(/[\\/]/).pop() || path;
       const newCourses = [...courses, { name, path, id: Date.now() }];
       setCourses(newCourses);
@@ -78,20 +159,16 @@ const App = () => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      const path = files[0].path;
-      handleFolderSelection(path);
+      handleFolderSelection(files[0].path);
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.types.includes('Files')) {
-      setIsDragging(true);
-    }
+    if (e.dataTransfer.types.includes('Files')) setIsDragging(true);
   };
 
   const handleDragLeave = (e) => {
@@ -102,12 +179,28 @@ const App = () => {
 
   const handleFileClick = async (file) => {
     setSelectedFile(file);
+    const savedProgress = progress[selectedCourse?.id];
+    const initialTime = (savedProgress?.lastFile === file.path) ? savedProgress.time : 0;
+    updateProgress(file.path, initialTime);
+
     if (['txt', 'md', 'js', 'json', 'py', 'css', 'html'].includes(file.type)) {
       const content = await window.electron.readFile(file.path);
       setFileContent(content);
     } else {
       setFileContent(null);
     }
+
+    if (file.folder) {
+      setExpandedFolders(prev => prev.includes(file.folder) ? prev : [...prev, file.folder]);
+    }
+
+    // Auto-scroll to active item
+    setTimeout(() => {
+      const activeItem = document.querySelector('.lesson-item.active');
+      if (activeItem) {
+        activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 100);
   };
 
   // Grouping
@@ -144,34 +237,36 @@ const App = () => {
       onDrop={handleDrop}
     >
       {/* Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="brand">
-            <MonitorPlay size={24} className="accent-color" style={{ color: 'var(--accent)' }} />
-            <span>CourseReader</span>
-          </div>
-          <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={addCourse}>
-            <FolderPlus size={18} />
-            Add Course
-          </button>
-        </div>
-
-        <div className="course-list">
-          <div className="explorer-section-title">Your Library</div>
-          {courses.map(course => (
-            <div 
-              key={course.id} 
-              className={`course-item ${selectedCourse?.id === course.id ? 'active' : ''}`}
-              onClick={() => setSelectedCourse(course)}
-            >
-              <Folder size={18} className="icon" />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {course.name}
-              </span>
+      {isSidebarVisible && (
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <div className="brand">
+              <MonitorPlay size={24} className="accent-color" style={{ color: 'var(--accent)' }} />
+              <span>CourseReader</span>
             </div>
-          ))}
-        </div>
-      </aside>
+            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={addCourse}>
+              <FolderPlus size={18} />
+              Add Course
+            </button>
+          </div>
+
+          <div className="course-list">
+            <div className="explorer-section-title">Your Library</div>
+            {courses.map(course => (
+              <div 
+                key={course.id} 
+                className={`course-item ${selectedCourse?.id === course.id ? 'active' : ''}`}
+                onClick={() => setSelectedCourse(course)}
+              >
+                <Folder size={18} className="icon" />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {course.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
 
       {/* Main View */}
       <main className="main-view">
@@ -179,18 +274,25 @@ const App = () => {
           <>
             <header className="top-bar">
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <button 
+                  className="icon-btn" 
+                  onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+                  title="Toggle Sidebar"
+                >
+                  <Library size={20} />
+                </button>
                 {!isExplorerVisible && (
-                  <button 
-                    className="icon-btn" 
-                    onClick={() => setIsExplorerVisible(true)}
-                    title="Show Lessons"
-                  >
+                  <button className="icon-btn" onClick={() => setIsExplorerVisible(true)}>
                     <PanelLeftOpen size={20} />
                   </button>
                 )}
                 <div>
-                  <h2 style={{ fontSize: '1.25rem' }}>{selectedCourse.name}</h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{categorized.lessons.length} Lessons • {categorized.resources.length} Resources</p>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{selectedCourse.name}</h2>
+                  {selectedFile && (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '2px' }}>
+                      {selectedFile.folder ? `${selectedFile.folder} > ` : ''}{selectedFile.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </header>
@@ -204,124 +306,136 @@ const App = () => {
                       <button 
                         className="view-toggle-btn" 
                         onClick={() => setViewMode(viewMode === 'flat' ? 'folders' : 'flat')}
-                        title={viewMode === 'flat' ? "Show folders" : "Show flat list"}
                       >
                         {viewMode === 'flat' ? <FolderTree size={16} /> : <List size={16} />}
                       </button>
                       <button 
                         className="view-toggle-btn" 
                         onClick={() => setIsExplorerVisible(false)}
-                        title="Hide Lessons"
                       >
                         <PanelLeftClose size={16} />
                       </button>
                     </div>
                   </div>
                 
-                <div className="scroll-area">
-                  {viewMode === 'folders' ? (
-                    Object.entries(categorized.groups).map(([folderName, group], gIdx) => {
-                      const isExpanded = expandedFolders.includes(folderName);
-                      return (
-                        <div key={folderName} className={`folder-group ${isExpanded ? 'active' : ''}`}>
-                          <div 
-                            className="folder-name clickable" 
-                            onClick={() => toggleFolder(folderName)}
-                          >
-                            <ChevronRight 
-                              size={14} 
-                              className={`chevron ${isExpanded ? 'rotated' : ''}`} 
-                            />
-                            <Folder size={14} style={{ opacity: 0.5 }} />
-                            <span className="folder-text">{folderName}</span>
-                            <span className="badge">{group.lessons.length}</span>
+                  <div className="scroll-area">
+                    {viewMode === 'folders' ? (
+                      Object.entries(categorized.groups).map(([folderName, group]) => {
+                        const isExpanded = expandedFolders.includes(folderName);
+                        return (
+                          <div key={folderName} className={`folder-group ${isExpanded ? 'active' : ''}`}>
+                            <div className="folder-name clickable" onClick={() => toggleFolder(folderName)}>
+                              <ChevronRight size={14} className={`chevron ${isExpanded ? 'rotated' : ''}`} />
+                              <Folder size={14} style={{ opacity: 0.5 }} />
+                              <span className="folder-text">{folderName}</span>
+                              <span className="badge">{group.lessons.length}</span>
+                            </div>
+                            
+                            {isExpanded && (
+                              <div className="folder-content">
+                                {group.lessons.map((file, idx) => (
+                                  <div 
+                                    key={`lesson-${idx}`} 
+                                    className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                    onClick={() => handleFileClick(file)}
+                                  >
+                                    {selectedFile?.path === file.path ? (
+                                      <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                                    ) : (
+                                      <Play size={12} className="icon" style={{ opacity: 0.4 }} />
+                                    )}
+                                    <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                                    {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
+                                  </div>
+                                ))}
+                                {group.resources.map((file, idx) => (
+                                  <div 
+                                    key={`res-${idx}`} 
+                                    className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                    onClick={() => handleFileClick(file)}
+                                  >
+                                    {selectedFile?.path === file.path ? (
+                                      <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                                    ) : (
+                                      file.type === 'pdf' ? <FileIcon size={12} className="icon" /> : <FileText size={12} className="icon" />
+                                    )}
+                                    <span className="file-name">{file.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          
-                          {isExpanded && (
-                            <div className="folder-content">
-                              {group.lessons.map((file, idx) => (
-                                <div 
-                                  key={`lesson-${idx}`} 
-                                  className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                  onClick={() => handleFileClick(file)}
-                                >
-                                  <Play size={12} className="icon" style={{ opacity: 0.4 }} />
-                                  <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
-                                  {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
-                                </div>
-                              ))}
-                              {group.resources.map((file, idx) => (
-                                <div 
-                                  key={`res-${idx}`} 
-                                  className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                  onClick={() => handleFileClick(file)}
-                                >
-                                  {file.type === 'pdf' ? <FileIcon size={12} className="icon" /> : <FileText size={12} className="icon" />}
-                                  <span className="file-name">{file.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <>
-                      {categorized.lessons.map((file, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                          onClick={() => handleFileClick(file)}
-                        >
-                          <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
-                          <Play size={14} className="icon" style={{ opacity: 0.6 }} />
-                          <span className="file-name">
-                            {file.name.replace(/\.[^/.]+$/, "")}
-                          </span>
-                          {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
-                        </div>
-                      ))}
-
-                      {categorized.resources.length > 0 && (
-                        <>
-                          <div className="explorer-section-title" style={{ marginTop: '20px', paddingLeft: 0 }}>Resources</div>
-                          {categorized.resources.map((file, idx) => (
-                            <div 
-                              key={`res-${idx}`} 
-                              className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                              onClick={() => handleFileClick(file)}
-                            >
-                              {file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />}
-                              <span className="file-name">
-                                {file.name}
-                              </span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </>
-                  )}
+                        );
+                      })
+                    ) : (
+                      <>
+                        {categorized.lessons.map((file, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                            onClick={() => handleFileClick(file)}
+                          >
+                            <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
+                            {selectedFile?.path === file.path ? (
+                              <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                            ) : (
+                              <Play size={14} className="icon" style={{ opacity: 0.6 }} />
+                            )}
+                            <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                            {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
+                          </div>
+                        ))}
+                        {categorized.resources.length > 0 && (
+                          <>
+                            <div className="explorer-section-title" style={{ marginTop: '20px', paddingLeft: 0 }}>Resources</div>
+                            {categorized.resources.map((file, idx) => (
+                              <div 
+                                key={`res-${idx}`} 
+                                className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                onClick={() => handleFileClick(file)}
+                              >
+                                {selectedFile?.path === file.path ? (
+                                  <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                                ) : (
+                                  file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />
+                                )}
+                                <span className="file-name">{file.name}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="viewer-container">
+              <div className="viewer-container">
                 {selectedFile ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                     {['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(selectedFile.type) ? (
                       <video 
+                        ref={videoRef}
                         controls 
                         className="video-player" 
                         src={`file://${selectedFile.path}`} 
                         key={selectedFile.path}
                         autoPlay
+                        onLoadedMetadata={(e) => {
+                          const savedTime = progress[selectedCourse?.id]?.time;
+                          if (savedTime && progress[selectedCourse?.id]?.lastFile === selectedFile.path) {
+                            e.target.currentTime = savedTime;
+                          }
+                        }}
+                        onEnded={playNext}
+                        onTimeUpdate={(e) => {
+                          if (Math.floor(e.target.currentTime) % 5 === 0) {
+                            updateProgress(selectedFile.path, e.target.currentTime);
+                          }
+                        }}
                       />
                     ) : selectedFile.type === 'pdf' ? (
-                      <embed 
-                        src={`file://${selectedFile.path}`} 
-                        type="application/pdf" 
-                        className="pdf-viewer" 
-                      />
+                      <embed src={`file://${selectedFile.path}`} type="application/pdf" className="pdf-viewer" />
                     ) : fileContent !== null ? (
                       <pre className="text-viewer">{fileContent}</pre>
                     ) : (
