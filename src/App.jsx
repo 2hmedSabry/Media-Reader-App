@@ -131,13 +131,24 @@ const App = () => {
     }
   };
 
-  const updateProgress = (filePath, time) => {
+  const updateProgress = (filePath, time, duration) => {
     if (!selectedCourse) return;
+    
+    const courseId = selectedCourse.id;
+    const currentCourseProgress = progress[courseId] || { lastFile: '', files: {} };
+    
     const newProgress = {
       ...progress,
-      [selectedCourse.id]: {
+      [courseId]: {
+        ...currentCourseProgress,
         lastFile: filePath,
-        time: time || 0
+        files: {
+          ...currentCourseProgress.files,
+          [filePath]: {
+            time: time || 0,
+            duration: duration || currentCourseProgress.files?.[filePath]?.duration || 0
+          }
+        }
       }
     };
     setProgress(newProgress);
@@ -148,9 +159,8 @@ const App = () => {
     const files = await window.electron.readDir(path);
     setAllFiles(files);
     
-    // Restore progress
     const courseProgress = progress[selectedCourse.id];
-    if (courseProgress) {
+    if (courseProgress && courseProgress.lastFile) {
       const lastFile = files.find(f => f.path === courseProgress.lastFile);
       if (lastFile) {
         handleFileClick(lastFile);
@@ -158,7 +168,6 @@ const App = () => {
       }
     }
 
-    // Auto-select first video if no progress
     const firstVideo = files.find(f => ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
     if (firstVideo) handleFileClick(firstVideo);
   };
@@ -203,10 +212,11 @@ const App = () => {
 
   const handleFileClick = async (file) => {
     setSelectedFile(file);
-    const savedProgress = progress[selectedCourse?.id];
-    const initialTime = (savedProgress?.lastFile === file.path) ? savedProgress.time : 0;
-    updateProgress(file.path, initialTime);
-
+    const courseProgress = progress[selectedCourse?.id];
+    const fileProgress = courseProgress?.files?.[file.path];
+    const initialTime = fileProgress ? fileProgress.time : 0;
+    
+    // Switch immediately, the video component will handle the time restore via onLoadedMetadata
     if (['txt', 'md', 'js', 'json', 'py', 'css', 'html'].includes(file.type)) {
       const content = await window.electron.readFile(file.path);
       setFileContent(content);
@@ -218,7 +228,6 @@ const App = () => {
       setExpandedFolders(prev => prev.includes(file.folder) ? prev : [...prev, file.folder]);
     }
 
-    // Auto-scroll to active item
     setTimeout(() => {
       const activeItem = document.querySelector('.lesson-item.active');
       if (activeItem) {
@@ -429,6 +438,7 @@ const App = () => {
                                     className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                     onClick={() => handleFileClick(file)}
                                   >
+                                  <div className="item-main-content">
                                     {selectedFile?.path === file.path ? (
                                       <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
                                     ) : (
@@ -437,13 +447,23 @@ const App = () => {
                                     <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
                                     {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
                                   </div>
-                                ))}
-                                {group.resources.map((file, idx) => (
-                                  <div 
-                                    key={`res-${idx}`} 
-                                    className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                    onClick={() => handleFileClick(file)}
-                                  >
+                                  {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
+                                    <div className="mini-progress-bar">
+                                      <div 
+                                        className="mini-progress-fill" 
+                                        style={{ width: `${(progress[selectedCourse.id].files[file.path].time / progress[selectedCourse.id].files[file.path].duration) * 100}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              {group.resources.map((file, idx) => (
+                                <div 
+                                  key={`res-${idx}`} 
+                                  className={`lesson-item resource ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                  onClick={() => handleFileClick(file)}
+                                >
+                                  <div className="item-main-content">
                                     {selectedFile?.path === file.path ? (
                                       <Volume2 size={12} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
                                     ) : (
@@ -451,7 +471,8 @@ const App = () => {
                                     )}
                                     <span className="file-name">{file.name}</span>
                                   </div>
-                                ))}
+                                </div>
+                              ))}
                               </div>
                             )}
                           </div>
@@ -465,6 +486,7 @@ const App = () => {
                             className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                             onClick={() => handleFileClick(file)}
                           >
+                            <div className="item-main-content">
                             <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
                             {selectedFile?.path === file.path ? (
                               <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
@@ -474,6 +496,15 @@ const App = () => {
                             <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
                             {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
                           </div>
+                          {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
+                            <div className="mini-progress-bar">
+                              <div 
+                                className="mini-progress-fill" 
+                                style={{ width: `${(progress[selectedCourse.id].files[file.path].time / progress[selectedCourse.id].files[file.path].duration) * 100}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
                         ))}
                         {categorized.resources.length > 0 && (
                           <>
@@ -484,13 +515,15 @@ const App = () => {
                                 className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                 onClick={() => handleFileClick(file)}
                               >
-                                {selectedFile?.path === file.path ? (
-                                  <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
-                                ) : (
-                                  file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />
-                                )}
-                                <span className="file-name">{file.name}</span>
-                              </div>
+                              <div className="item-main-content">
+                          {selectedFile?.path === file.path ? (
+                            <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                          ) : (
+                            file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />
+                          )}
+                          <span className="file-name">{file.name}</span>
+                        </div>
+                      </div>
                             ))}
                           </>
                         )}
@@ -513,16 +546,17 @@ const App = () => {
                         autoPlay
                         onLoadedMetadata={(e) => {
                           e.target.playbackRate = playbackRate;
-                          const savedTime = progress[selectedCourse?.id]?.time;
-                          if (savedTime && progress[selectedCourse?.id]?.lastFile === selectedFile.path) {
-                            e.target.currentTime = savedTime;
+                          const savedProgress = progress[selectedCourse?.id]?.files?.[selectedFile.path];
+                          if (savedProgress?.time) {
+                            e.target.currentTime = savedProgress.time;
                           }
+                          updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
                         }}
                         onEnded={playNext}
                         onTimeUpdate={(e) => {
-                          e.target.playbackRate = playbackRate; // Ensure it stays synced
+                          e.target.playbackRate = playbackRate;
                           if (Math.floor(e.target.currentTime) % 5 === 0) {
-                            updateProgress(selectedFile.path, e.target.currentTime);
+                            updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
                           }
                         }}
                       />
