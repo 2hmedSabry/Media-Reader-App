@@ -20,7 +20,10 @@ import {
   Zap,
   ZapOff,
   Camera,
-  X
+  X,
+  Settings,
+  Github,
+  Twitter
 } from 'lucide-react';
 
 const App = () => {
@@ -47,7 +50,14 @@ const App = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState(null);
   const [countdown, setCountdown] = useState(null);
+  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'default');
+  const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
   const videoRef = React.useRef(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
 
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => 
@@ -510,6 +520,48 @@ const App = () => {
                 </span>
               </div>
             ))}
+          </div>
+
+          <div className="sidebar-footer">
+            <div className="settings-btn" onClick={() => setIsThemePickerOpen(!isThemePickerOpen)}>
+              <Settings size={18} />
+            </div>
+            
+            <div className="social-links">
+              <a href="https://github.com/2hmedSabry" target="_blank" rel="noopener noreferrer" className="social-icon">
+                <Github size={16} />
+              </a>
+              <a href="https://twitter.com/2hmedsabri" target="_blank" rel="noopener noreferrer" className="social-icon">
+                <Twitter size={16} />
+              </a>
+              <div className="developer-info">Ahmed Sabry</div>
+            </div>
+
+            {isThemePickerOpen && (
+              <div className="theme-picker-modal">
+                <div 
+                  className={`theme-option ${theme === 'default' ? 'active' : ''}`} 
+                  onClick={() => { setTheme('default'); setIsThemePickerOpen(false); }}
+                >
+                  <span style={{ backgroundColor: '#6366f1' }}></span>
+                  Default Theme
+                </div>
+                <div 
+                  className={`theme-option ${theme === 'ocean' ? 'active' : ''}`} 
+                  onClick={() => { setTheme('ocean'); setIsThemePickerOpen(false); }}
+                >
+                  <span style={{ backgroundColor: '#5F9598' }}></span>
+                  Oceanic
+                </div>
+                <div 
+                  className={`theme-option ${theme === 'warm' ? 'active' : ''}`} 
+                  onClick={() => { setTheme('warm'); setIsThemePickerOpen(false); }}
+                >
+                  <span style={{ backgroundColor: '#FF9B51' }}></span>
+                  Sunset
+                </div>
+              </div>
+            )}
           </div>
         </aside>
       )}
