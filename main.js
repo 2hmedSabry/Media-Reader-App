@@ -161,6 +161,19 @@ ipcMain.handle('get-subtitle', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('toggle-mini-mode', async (event, isMini) => {
+  if (mainWindow) {
+    if (isMini) {
+      mainWindow.setSize(480, 270, true);
+      mainWindow.setAlwaysOnTop(true, 'floating');
+    } else {
+      mainWindow.setSize(1200, 800, true);
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.center();
+    }
+  }
+});
+
 // Storage for settings (courses)
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 

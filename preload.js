@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('electron', {
   openPath: (path) => ipcRenderer.invoke('open-path', path),
   isDirectory: (path) => ipcRenderer.invoke('is-directory', path),
   handleNativeDrop: (path) => ipcRenderer.invoke('handle-native-drop', path),
+  toggleMiniMode: (isMini) => ipcRenderer.invoke('toggle-mini-mode', isMini),
 });

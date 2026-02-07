@@ -21,13 +21,23 @@ import {
   ZapOff,
   Camera,
   X,
+  Minimize2,
+  Maximize2,
+  PictureInPicture2,
   Settings,
   Github,
   Twitter,
   Type,
   Layout,
   Keyboard,
-  Palette
+  Palette,
+  Trash2,
+  Edit3,
+  Tag,
+  Filter,
+  Check,
+  MoreHorizontal,
+  BarChart2
 } from 'lucide-react';
 
 const App = () => {
@@ -48,17 +58,93 @@ const App = () => {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [subtitleUrl, setSubtitleUrl] = useState(null);
   const [showSubtitles, setShowSubtitles] = useState(true);
-  const [isAutoplay, setIsAutoplay] = useState(true);
+  const [isAutoplay, setIsAutoplay] = useState(false);
   const [isSubPickerOpen, setIsSubPickerOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(340);
   const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState(null);
   const [countdown, setCountdown] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'default');
+  const [isMiniMode, setIsMiniMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('shortcuts');
   const [fontSize, setFontSize] = useState(parseInt(localStorage.getItem('app-fontSize')) || 16);
   const videoRef = React.useRef(null);
+  const [isPipActive, setIsPipActive] = useState(false);
+  
+  // Context Menu & Tags State
+  const [contextMenu, setContextMenu] = useState(null);
+  const [filterTag, setFilterTag] = useState(null);
+  const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
+  const [tempInput, setTempInput] = useState('');
+  const [editingCourseId, setEditingCourseId] = useState(null); 
+  const [taggingCourseId, setTaggingCourseId] = useState(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  const togglePip = async (e) => {
+    if (e && e.target && typeof e.target.blur === 'function') e.target.blur();
+    try {
+      if (document.pictureInPictureElement) {
+       } else if (videoRef.current) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.error('PiP failed:', err);
+    }
+  };
+
+  useEffect(() => {
+    const handlePipChange = () => {
+      setIsPipActive(!!document.pictureInPictureElement);
+    };
+    document.addEventListener('enterpictureinpicture', handlePipChange);
+    document.addEventListener('leavepictureinpicture', handlePipChange);
+    return () => {
+      document.removeEventListener('enterpictureinpicture', handlePipChange);
+      document.removeEventListener('leavepictureinpicture', handlePipChange);
+    };
+  }, []);
+
+  const toggleMiniMode = async (e) => {
+    if (e && e.target && typeof e.target.blur === 'function') e.target.blur();
+    const newState = !isMiniMode;
+    setIsMiniMode(newState);
+    if (window.electron && window.electron.toggleMiniMode) {
+      await window.electron.toggleMiniMode(newState);
+    }
+  };
+
+  const handleContextMenu = (e, course) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, courseId: course.id });
+  };
+
+  const updateCourse = (courseId, updates) => {
+    const newCourses = courses.map(c => 
+      c.id === courseId ? { ...c, ...updates } : c
+    );
+    setCourses(newCourses);
+    window.electron.saveCourses(newCourses);
+    if (selectedCourse?.id === courseId) {
+      setSelectedCourse(prev => ({ ...prev, ...updates }));
+    }
+  };
+  
+  const deleteCourse = (courseId) => {
+    const newCourses = courses.filter(c => c.id !== courseId);
+    setCourses(newCourses);
+    window.electron.saveCourses(newCourses);
+    if (selectedCourse?.id === courseId) {
+      setSelectedCourse(null);
+      setAllFiles([]);
+    }
+    setContextMenu(null);
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -68,6 +154,56 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem('app-fontSize', fontSize);
   }, [fontSize]);
+
+  // Statistics Tracking
+  const [stats, setStats] = useState(() => {
+    try {
+      const stored = localStorage.getItem('app-stats');
+      return stored ? JSON.parse(stored) : { totalSeconds: 0, daily: {}, streaks: 0, lastStudyDate: null };
+    } catch {
+      return { totalSeconds: 0, daily: {}, streaks: 0, lastStudyDate: null };
+    }
+  });
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
+        setStats(prev => {
+          const today = new Date().toISOString().split('T')[0];
+          const newDaily = { ...prev.daily };
+          if (!newDaily[today]) newDaily[today] = 0;
+          newDaily[today] += 5; // adding 5 seconds per interval
+          
+          let newStreak = prev.streaks;
+          if (prev.lastStudyDate !== today) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            
+            if (prev.lastStudyDate === yesterdayStr) {
+              newStreak = prev.streaks + 1;
+            } else {
+              newStreak = 1;
+            }
+          }
+
+          return {
+            ...prev,
+            totalSeconds: prev.totalSeconds + 5,
+            daily: newDaily,
+            streaks: newStreak,
+            lastStudyDate: today
+          };
+        });
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('app-stats', JSON.stringify(stats));
+  }, [stats]);
 
   // Listen for native file drops
   useEffect(() => {
@@ -120,6 +256,9 @@ const App = () => {
         if (e.key === 'Escape') setIsSearchOpen(false);
         return;
       }
+
+      // Ignore if typing in an input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
       if (!selectedFile) return;
       const video = videoRef.current;
@@ -557,7 +696,7 @@ const App = () => {
         </div>
       )}
       {/* Sidebar */}
-      {isSidebarVisible && (
+      {isSidebarVisible && !isMiniMode && (
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="brand">
@@ -571,24 +710,89 @@ const App = () => {
           </div>
 
           <div className="course-list">
-            <div className="explorer-section-title">Your Library</div>
-            {courses.map(course => (
+            <div className="explorer-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Your Library</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {filterTag && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'var(--accent-soft)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center' }}>
+                    {filterTag}
+                    <X size={10} style={{ marginLeft: '4px', cursor: 'pointer' }} onClick={() => setFilterTag(null)} />
+                  </span>
+                )}
+                <button 
+                  onClick={() => setIsTagMenuOpen(!isTagMenuOpen)}
+                  title="Filter by Tags"
+                  style={{ background: 'none', border: 'none', color: isTagMenuOpen || filterTag ? 'var(--accent)' : 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', transition: 'color 0.2s' }}
+                >
+                  <Tag size={14} fill={filterTag ? "currentColor" : "none"} />
+                </button>
+              </div>
+            </div>
+
+            {isTagMenuOpen && (
+              <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '0 4px' }}>
+                <button 
+                  onClick={() => { setFilterTag(null); setIsTagMenuOpen(false); }}
+                  style={{
+                    fontSize: '10px', padding: '4px 8px', borderRadius: '12px',
+                    border: '1px solid var(--border)', background: !filterTag ? 'var(--accent)' : 'transparent',
+                    color: !filterTag ? '#fff' : 'var(--text-secondary)', cursor: 'pointer'
+                  }}
+                >
+                  All
+                </button>
+                {[...new Set(courses.flatMap(c => c.tags || []))].map(tag => (
+                  <button 
+                    key={tag}
+                    onClick={() => { setFilterTag(tag); setIsTagMenuOpen(false); }}
+                    style={{
+                      fontSize: '10px', padding: '4px 8px', borderRadius: '12px',
+                      border: '1px solid var(--border)', background: filterTag === tag ? 'var(--accent)' : 'transparent',
+                      color: filterTag === tag ? '#fff' : 'var(--text-secondary)', cursor: 'pointer'
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {courses
+              .filter(c => !filterTag || (c.tags && c.tags.includes(filterTag)))
+              .map(course => (
               <div 
                 key={course.id} 
                 className={`course-item ${selectedCourse?.id === course.id ? 'active' : ''}`}
                 onClick={() => setSelectedCourse(course)}
+                onContextMenu={(e) => handleContextMenu(e, course)}
+                title={course.path}
               >
-                <Folder size={18} className="icon" />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {course.name}
+                <Folder size={18} className="icon" style={{ color: course.color || 'inherit' }} />
+                <span style={{ 
+                  whiteSpace: 'nowrap', 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis', 
+                  flex: 1,
+                  color: course.color || 'inherit',
+                  fontWeight: course.color ? 600 : 'inherit'
+                }}>
+                  {course.alias || course.name}
                 </span>
+                {course.tags && course.tags.length > 0 && (
+                   <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-muted)', opacity: 0.5 }} />
+                )}
               </div>
             ))}
           </div>
   
             <div className="sidebar-footer">
-              <div className="settings-btn" onClick={() => setIsSettingsOpen(true)}>
-                <Settings size={18} />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="settings-btn" onClick={() => setIsSettingsOpen(true)} title="Settings">
+                  <Settings size={18} />
+                </div>
+                <div className="settings-btn" onClick={() => setIsStatsOpen(true)} title="Statistics">
+                  <BarChart2 size={18} />
+                </div>
               </div>
               
               <div className="social-links">
@@ -780,7 +984,8 @@ const App = () => {
       <main className="main-view">
         {selectedCourse ? (
           <>
-            <header className="top-bar">
+            {!isMiniMode && (
+              <header className="top-bar">
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <button 
                   className="icon-btn" 
@@ -815,11 +1020,18 @@ const App = () => {
                 </div>
               </div>
             </header>
+            )}
 
             <div className={`content-wrapper ${isResizing ? 'resizing' : ''}`}>
-              {isExplorerVisible && (
+              {isExplorerVisible && !isMiniMode && (
                 <>
-                  <div className="lesson-explorer" style={{ width: `${explorerWidth}px` }}>
+                  <div className="lesson-explorer" style={{ 
+                    width: `${explorerWidth}px`,
+                    ...(selectedCourse?.color && /^#[0-9A-F]{6}$/i.test(selectedCourse.color) ? {
+                      '--accent': selectedCourse.color,
+                      '--accent-soft': `rgba(${parseInt(selectedCourse.color.slice(1,3), 16)}, ${parseInt(selectedCourse.color.slice(3,5), 16)}, ${parseInt(selectedCourse.color.slice(5,7), 16)}, 0.15)`
+                    } : {})
+                  }}>
                   <div className="explorer-header-row">
                     <div className="explorer-section-title">Lessons</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
@@ -962,13 +1174,39 @@ const App = () => {
                 <div 
                   className="resizer-bar" 
                   onMouseDown={() => setIsResizing(true)}
+                  style={{ display: isMiniMode ? 'none' : 'flex' }}
                 />
               </>
             )}
 
-              <div className="viewer-container">
+              <div 
+                className="viewer-container"
+                style={isMiniMode ? { 
+                  margin: 0, 
+                  borderRadius: 0, 
+                  border: 'none',
+                  width: '100vw',
+                  height: '100vh',
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  zIndex: 9999
+                } : {}}
+              >
                 {selectedFile ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                    {isMiniMode && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: '40px',
+                        zIndex: 90,
+                        WebkitAppRegion: 'drag',
+                        cursor: 'grab'
+                      }} />
+                    )}
                     {['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(selectedFile.type) ? (
                       <>
                         <video 
@@ -1021,6 +1259,39 @@ const App = () => {
                             />
                           )}
                         </video>
+                        
+                        {/* PiP, Notes & Mini Mode Controls */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '24px',
+                          right: '24px',
+                          display: 'flex',
+                          gap: '8px',
+                          zIndex: 100,
+                          WebkitAppRegion: 'no-drag'
+                        }}>
+                          <button 
+                            onClick={toggleMiniMode}
+                            title={isMiniMode ? "Restore Mode" : "Mini Player Mode"}
+                            style={{
+                              background: isMiniMode ? 'var(--accent)' : 'rgba(0, 0, 0, 0.6)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              borderRadius: '8px',
+                              width: '36px',
+                              height: '36px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              cursor: 'pointer',
+                              backdropFilter: 'blur(8px)',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {isMiniMode ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
+                          </button>
+
+                        </div>
                         
                         {countdown !== null && isAutoplay && (
                           <div className="next-lesson-button" onClick={() => { setCountdown(null); playNext(); }}>
@@ -1110,6 +1381,230 @@ const App = () => {
           </div>
         )}
       </main>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '8px',
+            minWidth: '180px',
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px'
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Colors */}
+          <div style={{ display: 'flex', gap: '6px', padding: '4px 8px', marginBottom: '4px' }}>
+            {['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6'].map(color => (
+              <div 
+                key={color}
+                onClick={() => { updateCourse(contextMenu.courseId, { color }); setContextMenu(null); }}
+                style={{
+                  width: '16px', height: '16px', borderRadius: '50%', background: color, cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.1)'
+                }}
+              />
+            ))}
+            <div 
+               onClick={() => { updateCourse(contextMenu.courseId, { color: null }); setContextMenu(null); }}
+               title="Reset Color"
+               style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid var(--text-muted)', cursor: 'pointer', position: 'relative' }}
+            >
+              <div style={{ position: 'absolute', top: '7px', left: '-2px', right: '-2px', height: '1px', background: 'var(--text-muted)', transform: 'rotate(45deg)' }} />
+            </div>
+          </div>
+          
+          <button className="ctx-item" 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
+            onMouseEnter={e => e.target.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.target.style.background = 'transparent'}
+            onClick={() => { setEditingCourseId(contextMenu.courseId); setTempInput(courses.find(c => c.id === contextMenu.courseId)?.alias || courses.find(c => c.id === contextMenu.courseId)?.name); setContextMenu(null); }}>
+            <Edit3 size={14} /> Rename Alias
+          </button>
+          
+          <button className="ctx-item" 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
+            onMouseEnter={e => e.target.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.target.style.background = 'transparent'}
+            onClick={() => { setTaggingCourseId(contextMenu.courseId); setTempInput(''); setContextMenu(null); }}>
+            <Tag size={14} /> Add Tag
+          </button>
+          
+          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+          
+          <button className="ctx-item delete" 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: '#ef4444', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
+            onMouseEnter={e => e.target.style.background = 'rgba(239, 68, 68, 0.1)'}
+            onMouseLeave={e => e.target.style.background = 'transparent'}
+            onClick={() => deleteCourse(contextMenu.courseId)}>
+            <Trash2 size={14} /> Remove
+          </button>
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {editingCourseId && (
+        <div className="modal-overlay" onClick={() => setEditingCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Rename Application Alias</h3>
+            <input 
+              value={tempInput}
+              onChange={e => setTempInput(e.target.value)}
+              autoFocus
+              className="search-input" 
+              style={{ width: '100%', marginBottom: '16px', background: 'var(--bg-deep)', padding: '10px' }}
+              placeholder="Enter new name..."
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn-ghost" onClick={() => setEditingCourseId(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => { updateCourse(editingCourseId, { alias: tempInput }); setEditingCourseId(null); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tag Modal */}
+      {taggingCourseId && (
+        <div className="modal-overlay" onClick={() => setTaggingCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Manage Tags</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+              {courses.find(c => c.id === taggingCourseId)?.tags?.map(tag => (
+                <span key={tag} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {tag}
+                  <X size={12} style={{ cursor: 'pointer' }} onClick={() => {
+                     const currentTags = courses.find(c => c.id === taggingCourseId)?.tags || [];
+                     updateCourse(taggingCourseId, { tags: currentTags.filter(t => t !== tag) });
+                  }} />
+                </span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                value={tempInput}
+                onChange={e => setTempInput(e.target.value)}
+                className="search-input" 
+                style={{ flex: 1, background: 'var(--bg-deep)', padding: '8px' }}
+                placeholder="New tag..."
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && tempInput.trim()) {
+                     const currentTags = courses.find(c => c.id === taggingCourseId)?.tags || [];
+                     if (!currentTags.includes(tempInput.trim())) {
+                       updateCourse(taggingCourseId, { tags: [...currentTags, tempInput.trim()] });
+                       setTempInput('');
+                     }
+                  }
+                }}
+              />
+              <button className="btn-primary" onClick={() => {
+                 if (tempInput.trim()) {
+                     const currentTags = courses.find(c => c.id === taggingCourseId)?.tags || [];
+                     if (!currentTags.includes(tempInput.trim())) {
+                       updateCourse(taggingCourseId, { tags: [...currentTags, tempInput.trim()] });
+                       setTempInput('');
+                     }
+                 }
+              }}><Check size={16} /></button>
+            </div>
+            <div style={{ marginTop: '16px', textAlign: 'right' }}>
+               <button className="btn-ghost" onClick={() => setTaggingCourseId(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Modal */}
+      {isStatsOpen && (() => {
+        const today = new Date();
+        const days = Array.from({length: 7}, (_, i) => {
+           const d = new Date(today);
+           d.setDate(d.getDate() - (6 - i));
+           return d.toISOString().split('T')[0];
+        });
+        const data = days.map(day => (stats.daily[day] || 0) / 60); // minutes
+        const maxVal = Math.max(...data, 10); // Base scale of at least 10 mins
+        
+        // SVG Logic
+        const width = 500;
+        const height = 150;
+        const padding = 20;
+        const plotWidth = width - padding * 2;
+        const plotHeight = height - padding * 2;
+        
+        const points = data.map((val, i) => {
+          const x = padding + (i / (days.length - 1)) * plotWidth;
+          const y = height - padding - (val / maxVal) * plotHeight;
+          return `${x},${y}`;
+        }).join(' ');
+
+        const fillPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
+
+        return (
+        <div className="modal-overlay" onClick={() => setIsStatsOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '32px', borderRadius: '24px', width: '600px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <BarChart2 size={24} style={{ color: 'var(--accent)' }} /> Your Progress
+              </h2>
+              <button className="icon-btn" onClick={() => setIsStatsOpen(false)}><X size={20} /></button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
+               <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '16px', textAlign: 'center' }}>
+                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Total Hours</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{(stats.totalSeconds / 3600).toFixed(1)}</div>
+               </div>
+               <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '16px', textAlign: 'center' }}>
+                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Current Streak</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{stats.streaks} <span style={{fontSize:'1rem'}}>days</span></div>
+               </div>
+               <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '16px', textAlign: 'center' }}>
+                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Today's Focus</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round((stats.daily[new Date().toISOString().split('T')[0]] || 0) / 60)} <span style={{fontSize:'1rem'}}>m</span></div>
+               </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-deep)', borderRadius: '16px', padding: '24px', position: 'relative' }}>
+               <h4 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)' }}>Last 7 Days Activity (Minutes)</h4>
+               <svg width="100%" height="150" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
+                 {/* Grid Lines */}
+                 <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--border)" strokeWidth="1" />
+                 <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="var(--border)" strokeDasharray="4 4" strokeWidth="1" opacity="0.3" />
+
+                 {/* Area Fill */}
+                 <polygon points={fillPoints} fill="var(--accent-soft)" opacity="0.5" />
+                 
+                 {/* Line */}
+                 <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                 
+                 {/* Points & Labels */}
+                 {data.map((val, i) => {
+                    const x = padding + (i / (days.length - 1)) * plotWidth;
+                    const y = height - padding - (val / maxVal) * plotHeight;
+                    const dayLabel = new Date(days[i]).toLocaleDateString('en-US', { weekday: 'short' });
+                    return (
+                      <g key={i}>
+                        <circle cx={x} cy={y} r="4" fill="var(--bg-surface)" stroke="var(--accent)" strokeWidth="2" />
+                        <text x={x} y={height + 15} textAnchor="middle" fill="var(--text-muted)" fontSize="10">{dayLabel}</text>
+                        {val > 0 && <text x={x} y={y - 10} textAnchor="middle" fill="var(--text-primary)" fontSize="10" fontWeight="bold">{Math.round(val)}</text>}
+                      </g>
+                    );
+                 })}
+               </svg>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {toast && (
         <div className="toast">
