@@ -17,6 +17,7 @@ const App = () => {
   const [allFiles, setAllFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileContent, setFileContent] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -40,15 +41,48 @@ const App = () => {
     if (firstVideo) handleFileClick(firstVideo);
   };
 
-  const addCourse = async () => {
-    const path = await window.electron.selectFolder();
+  const handleFolderSelection = (path) => {
     if (path) {
-      const name = path.split('/').pop() || path;
+      // Check if course already exists
+      if (courses.some(c => c.path === path)) return;
+
+      const name = path.split(/[\\/]/).pop() || path;
       const newCourses = [...courses, { name, path, id: Date.now() }];
       setCourses(newCourses);
       window.electron.saveCourses(newCourses);
       setSelectedCourse(newCourses[newCourses.length - 1]);
     }
+  };
+
+  const addCourse = async () => {
+    const path = await window.electron.selectFolder();
+    handleFolderSelection(path);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const path = files[0].path;
+      handleFolderSelection(path);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   const handleFileClick = async (file) => {
@@ -69,7 +103,12 @@ const App = () => {
   }, [allFiles]);
 
   return (
-    <div className="app-container">
+    <div 
+      className={`app-container ${isDragging ? 'dragging' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">

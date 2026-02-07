@@ -41,6 +41,30 @@ body {
   display: flex;
   height: 100%;
   background-color: var(--bg-deep);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.app-container.dragging {
+  background-color: var(--bg-surface);
+  box-shadow: inset 0 0 0 4px var(--accent);
+}
+
+.app-container.dragging::after {
+  content: 'Drop Folder Here to Add Course';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-elevated);
+  padding: 20px 40px;
+  border-radius: var(--radius-lg);
+  border: 2px dashed var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.2rem;
+  z-index: 1000;
+  pointer-events: none;
 }
 
 /* Sidebar */
@@ -56,6 +80,11 @@ body {
 
 .sidebar-header {
   padding: 32px 24px;
+  -webkit-app-region: drag;
+}
+
+.sidebar-header * {
+  -webkit-app-region: no-drag;
 }
 
 .brand {
@@ -114,6 +143,13 @@ body {
   justify-content: space-between;
   align-items: center;
   z-index: 5;
+  -webkit-app-region: drag;
+}
+
+.top-bar button, 
+.top-bar input,
+.top-bar a {
+  -webkit-app-region: no-drag;
 }
 
 .content-wrapper {
