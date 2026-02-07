@@ -278,6 +278,111 @@ body {
   background: var(--accent-soft);
 }
 
+/* Subtitle Picker */
+.subtitle-picker-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.subtitle-picker-card {
+  background: var(--bg-surface);
+  width: 90%;
+  max-width: 400px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  max-height: 80%;
+  animation: scaleUp 0.2s ease-out;
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.picker-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.picker-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+}
+
+.picker-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.picker-item-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.picker-item-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-item-ext {
+  font-size: 0.7rem;
+  opacity: 0.5;
+}
+
+.picker-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.picker-close-btn {
+  margin: 12px 24px 24px;
+  padding: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+
+.picker-close-btn:hover {
+  background: var(--bg-hover);
+}
+
 .folder-group {
   margin-bottom: 8px;
 }

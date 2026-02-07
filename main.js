@@ -47,6 +47,17 @@ ipcMain.handle('select-folder', async () => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('select-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Subtitles', extensions: ['srt', 'vtt'] }
+    ]
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
 ipcMain.handle('read-dir', async (event, dirPath) => {
   try {
     const getAllFiles = (dir, rootDir, allFiles = []) => {

@@ -38,7 +38,9 @@ const App = () => {
   const [progress, setProgress] = useState({});
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [subtitleUrl, setSubtitleUrl] = useState(null);
+  const [showSubtitles, setShowSubtitles] = useState(true);
   const [isAutoplay, setIsAutoplay] = useState(true);
+  const [isSubPickerOpen, setIsSubPickerOpen] = useState(false);
   const videoRef = React.useRef(null);
 
   const toggleFolder = (folderName) => {
@@ -108,12 +110,18 @@ const App = () => {
         case ']':
           setPlaybackRate(prev => Math.min(3, prev + 0.25));
           break;
+        case 'c':
+          setShowSubtitles(prev => !prev);
+          break;
+        case 'v':
+          setIsSubPickerOpen(prev => !prev);
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedFile, allFiles, isSearchOpen]);
+  }, [selectedFile, allFiles, isSearchOpen, subtitleUrl]);
 
   useEffect(() => {
     if (selectedCourse) {
@@ -134,6 +142,17 @@ const App = () => {
     const currentIndex = lessons.findIndex(f => f.path === selectedFile?.path);
     if (currentIndex > 0) {
       handleFileClick(lessons[currentIndex - 1]);
+    }
+  };
+
+  const pickSubtitle = async (file) => {
+    const content = await window.electron.getSubtitle(file.path);
+    if (content) {
+      if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+      const blob = new Blob([content], { type: 'text/vtt' });
+      setSubtitleUrl(URL.createObjectURL(blob));
+      setShowSubtitles(true);
+      setIsSubPickerOpen(false);
     }
   };
 
@@ -573,44 +592,77 @@ const App = () => {
                 {selectedFile ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                     {['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(selectedFile.type) ? (
-                      <video 
-                        ref={videoRef}
-                        controls 
-                        className="video-player" 
-                        src={`file://${selectedFile.path}`} 
-                        key={selectedFile.path}
-                        autoPlay={isAutoplay}
-                        onLoadedMetadata={(e) => {
-                          e.target.playbackRate = playbackRate;
-                          const savedProgress = progress[selectedCourse?.id]?.files?.[selectedFile.path];
-                          if (savedProgress?.time) {
-                            // If video was finished (near the end), restart from the beginning
-                            const isFinished = savedProgress.duration > 0 && 
-                                             (savedProgress.duration - savedProgress.time < 1.5 || 
-                                              savedProgress.time / savedProgress.duration > 0.98);
-                            
-                            e.target.currentTime = isFinished ? 0 : savedProgress.time;
-                          }
-                          updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
-                        }}
-                        onEnded={() => isAutoplay && playNext()}
-                        onTimeUpdate={(e) => {
-                          e.target.playbackRate = playbackRate;
-                          if (Math.floor(e.target.currentTime) % 5 === 0) {
+                      <>
+                        <video 
+                          ref={videoRef}
+                          controls 
+                          className="video-player" 
+                          src={`file://${selectedFile.path}`} 
+                          key={selectedFile.path}
+                          autoPlay={isAutoplay}
+                          onLoadedMetadata={(e) => {
+                            e.target.playbackRate = playbackRate;
+                            const savedProgress = progress[selectedCourse?.id]?.files?.[selectedFile.path];
+                            if (savedProgress?.time) {
+                              // If video was finished (near the end), restart from the beginning
+                              const isFinished = savedProgress.duration > 0 && 
+                                               (savedProgress.duration - savedProgress.time < 1.5 || 
+                                                savedProgress.time / savedProgress.duration > 0.98);
+                              
+                              e.target.currentTime = isFinished ? 0 : savedProgress.time;
+                            }
                             updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
-                          }
-                        }}
-                      >
-                        {subtitleUrl && (
-                          <track 
-                            label="English"
-                            kind="subtitles"
-                            srcLang="en"
-                            src={subtitleUrl}
-                            default
-                          />
+                          }}
+                          onEnded={() => isAutoplay && playNext()}
+                          onTimeUpdate={(e) => {
+                            e.target.playbackRate = playbackRate;
+                            if (Math.floor(e.target.currentTime) % 5 === 0) {
+                              updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
+                            }
+                          }}
+                        >
+                          {subtitleUrl && showSubtitles && (
+                            <track 
+                              label="English"
+                              kind="subtitles"
+                              srcLang="en"
+                              src={subtitleUrl}
+                              default
+                            />
+                          )}
+                        </video>
+                        
+                        {isSubPickerOpen && (
+                          <div className="subtitle-picker-overlay" onClick={() => setIsSubPickerOpen(false)}>
+                            <div className="subtitle-picker-card" onClick={e => e.stopPropagation()}>
+                              <div className="picker-header">
+                                <Subtitles size={20} className="accent-color" style={{ color: 'var(--accent)' }} />
+                                <span style={{ fontWeight: 700, fontSize: '1rem' }}>Select Subtitle</span>
+                              </div>
+                              <div className="picker-list">
+                                {allFiles
+                                  .filter(f => f.folder === selectedFile.folder && ['srt', 'vtt'].includes(f.type.toLowerCase()))
+                                  .map((f, idx) => (
+                                    <div key={idx} className="picker-item" onClick={() => pickSubtitle(f)}>
+                                      <FileText size={16} />
+                                      <div className="picker-item-info">
+                                        <span className="picker-item-name">{f.name}</span>
+                                        <span className="picker-item-ext">{f.type.toUpperCase()} File</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                {allFiles.filter(f => f.folder === selectedFile.folder && ['srt', 'vtt'].includes(f.type.toLowerCase())).length === 0 && (
+                                  <div className="picker-empty">
+                                    <Subtitles size={32} style={{ opacity: 0.1, marginBottom: '12px' }} />
+                                    <p>No subtitle files found in this folder</p>
+                                  </div>
+                                )}
+                              </div>
+                              <button className="picker-close-btn" onClick={() => setIsSubPickerOpen(false)}>Close</button>
+                            </div>
+                          </div>
                         )}
-                      </video>
+                      </>
                     ) : selectedFile.type === 'pdf' ? (
                       <embed src={`file://${selectedFile.path}`} type="application/pdf" className="pdf-viewer" />
                     ) : fileContent !== null ? (
