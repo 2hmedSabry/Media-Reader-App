@@ -10,7 +10,9 @@ import {
   List,
   FolderTree,
   ChevronRight,
-  MonitorPlay
+  MonitorPlay,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 const App = () => {
@@ -22,6 +24,7 @@ const App = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [viewMode, setViewMode] = useState('folders'); // 'flat' or 'folders'
   const [expandedFolders, setExpandedFolders] = useState([]);
+  const [isExplorerVisible, setIsExplorerVisible] = useState(true);
 
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => 
@@ -175,24 +178,45 @@ const App = () => {
         {selectedCourse ? (
           <>
             <header className="top-bar">
-              <div>
-                <h2 style={{ fontSize: '1.25rem' }}>{selectedCourse.name}</h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{categorized.lessons.length} Lessons • {categorized.resources.length} Resources</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                {!isExplorerVisible && (
+                  <button 
+                    className="icon-btn" 
+                    onClick={() => setIsExplorerVisible(true)}
+                    title="Show Lessons"
+                  >
+                    <PanelLeftOpen size={20} />
+                  </button>
+                )}
+                <div>
+                  <h2 style={{ fontSize: '1.25rem' }}>{selectedCourse.name}</h2>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{categorized.lessons.length} Lessons • {categorized.resources.length} Resources</p>
+                </div>
               </div>
             </header>
 
             <div className="content-wrapper">
-              <div className="lesson-explorer">
-                <div className="explorer-header-row">
-                  <div className="explorer-section-title">Lessons</div>
-                  <button 
-                    className="view-toggle-btn" 
-                    onClick={() => setViewMode(viewMode === 'flat' ? 'folders' : 'flat')}
-                    title={viewMode === 'flat' ? "Show folders" : "Show flat list"}
-                  >
-                    {viewMode === 'flat' ? <FolderTree size={16} /> : <List size={16} />}
-                  </button>
-                </div>
+              {isExplorerVisible && (
+                <div className="lesson-explorer">
+                  <div className="explorer-header-row">
+                    <div className="explorer-section-title">Lessons</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button 
+                        className="view-toggle-btn" 
+                        onClick={() => setViewMode(viewMode === 'flat' ? 'folders' : 'flat')}
+                        title={viewMode === 'flat' ? "Show folders" : "Show flat list"}
+                      >
+                        {viewMode === 'flat' ? <FolderTree size={16} /> : <List size={16} />}
+                      </button>
+                      <button 
+                        className="view-toggle-btn" 
+                        onClick={() => setIsExplorerVisible(false)}
+                        title="Hide Lessons"
+                      >
+                        <PanelLeftClose size={16} />
+                      </button>
+                    </div>
+                  </div>
                 
                 <div className="scroll-area">
                   {viewMode === 'folders' ? (
@@ -279,8 +303,9 @@ const App = () => {
                   )}
                 </div>
               </div>
+            )}
 
-              <div className="viewer-container">
+            <div className="viewer-container">
                 {selectedFile ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                     {['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(selectedFile.type) ? (

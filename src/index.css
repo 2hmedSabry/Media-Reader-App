@@ -161,6 +161,25 @@ body {
 }
 
 /* Lesson Explorer */
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .lesson-explorer {
   width: 340px;
   background-color: var(--bg-surface);
@@ -169,6 +188,12 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-soft);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .explorer-section-title {
@@ -217,8 +242,8 @@ body {
 }
 
 .view-toggle-btn {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: none;
   color: var(--text-secondary);
   width: 32px;
   height: 32px;
@@ -233,7 +258,7 @@ body {
 
 .view-toggle-btn:hover {
   background: var(--bg-hover);
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .folder-group {
