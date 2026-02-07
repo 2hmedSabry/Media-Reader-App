@@ -27,6 +27,7 @@ const App = () => {
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [progress, setProgress] = useState({});
   const videoRef = React.useRef(null);
 
@@ -77,6 +78,12 @@ const App = () => {
           break;
         case 'p':
           playPrev();
+          break;
+        case '[':
+          setPlaybackRate(prev => Math.max(0.5, prev - 0.25));
+          break;
+        case ']':
+          setPlaybackRate(prev => Math.min(3, prev + 0.25));
           break;
       }
     };
@@ -287,7 +294,18 @@ const App = () => {
                   </button>
                 )}
                 <div>
-                  <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{selectedCourse.name}</h2>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{selectedCourse.name} {playbackRate !== 1 && (
+                    <span style={{ 
+                      fontSize: '0.7rem', 
+                      padding: '2px 6px', 
+                      backgroundColor: 'var(--accent-soft)', 
+                      color: 'var(--accent)', 
+                      borderRadius: '4px',
+                      marginLeft: '8px'
+                    }}>
+                      {playbackRate}x
+                    </span>
+                  )}</h2>
                   {selectedFile && (
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '2px' }}>
                       {selectedFile.folder ? `${selectedFile.folder} > ` : ''}{selectedFile.name}
@@ -422,6 +440,7 @@ const App = () => {
                         key={selectedFile.path}
                         autoPlay
                         onLoadedMetadata={(e) => {
+                          e.target.playbackRate = playbackRate;
                           const savedTime = progress[selectedCourse?.id]?.time;
                           if (savedTime && progress[selectedCourse?.id]?.lastFile === selectedFile.path) {
                             e.target.currentTime = savedTime;
@@ -429,6 +448,7 @@ const App = () => {
                         }}
                         onEnded={playNext}
                         onTimeUpdate={(e) => {
+                          e.target.playbackRate = playbackRate; // Ensure it stays synced
                           if (Math.floor(e.target.currentTime) % 5 === 0) {
                             updateProgress(selectedFile.path, e.target.currentTime);
                           }
