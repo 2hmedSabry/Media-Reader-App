@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('electron', {
   loadProgress: () => ipcRenderer.invoke('load-progress'),
   getSubtitle: (path) => ipcRenderer.invoke('get-subtitle', path),
   selectFile: () => ipcRenderer.invoke('select-file'),
+  saveSnapshot: (data) => ipcRenderer.invoke('save-snapshot', data),
+  openPath: (path) => ipcRenderer.invoke('open-path', path),
 });

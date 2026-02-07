@@ -18,7 +18,9 @@ import {
   Command,
   Subtitles,
   Zap,
-  ZapOff
+  ZapOff,
+  Camera,
+  X
 } from 'lucide-react';
 
 const App = () => {
@@ -41,6 +43,10 @@ const App = () => {
   const [showSubtitles, setShowSubtitles] = useState(true);
   const [isAutoplay, setIsAutoplay] = useState(true);
   const [isSubPickerOpen, setIsSubPickerOpen] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(340);
+  const [isResizing, setIsResizing] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [countdown, setCountdown] = useState(null);
   const videoRef = React.useRef(null);
 
   const toggleFolder = (folderName) => {
@@ -116,6 +122,9 @@ const App = () => {
         case 'v':
           setIsSubPickerOpen(prev => !prev);
           break;
+        case 's':
+          takeSnapshot();
+          break;
       }
     };
 
@@ -155,6 +164,66 @@ const App = () => {
       setIsSubPickerOpen(false);
     }
   };
+
+  const showToast = (title, message, icon = 'Camera') => {
+    setToast({ title, message, icon });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const takeSnapshot = async () => {
+    const video = videoRef.current;
+    if (!video || !selectedFile) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const base64Data = canvas.toDataURL('image/jpeg', 0.95);
+      const timestamp = Math.floor(video.currentTime);
+      
+      const filePath = selectedFile.path;
+      const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+      const videoName = selectedFile.name.replace(/\.[^/.]+$/, "");
+      const fileName = `${videoName}_snap_${timestamp}s.jpg`;
+      const finalPath = `${dir}/${fileName}`;
+
+      const success = await window.electron.saveSnapshot({ base64Data, filePath: finalPath });
+      if (success) {
+        showToast('Captured', 'Snapshot saved to course folder');
+      }
+    } catch (err) {
+      console.error('Failed to take snapshot:', err);
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isResizing) return;
+    const newWidth = e.clientX - (isSidebarVisible ? 280 : 0) - 40;
+    if (newWidth >= 300 && newWidth <= 800) {
+      setExplorerWidth(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsResizing(false);
+  };
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   const updateProgress = (filePath, time, duration) => {
     if (!selectedCourse) return;
@@ -404,7 +473,10 @@ const App = () => {
               )}
               
               {searchQuery && searchResults.lessons.length === 0 && searchResults.library.length === 0 && (
-                <div className="no-results">No matches found for "{searchQuery}"</div>
+                <div className="no-results">
+                  <div className="search-empty-visual" />
+                  No matches found for "{searchQuery}"
+                </div>
               )}
             </div>
           </div>
@@ -482,9 +554,10 @@ const App = () => {
               </div>
             </header>
 
-            <div className="content-wrapper">
+            <div className={`content-wrapper ${isResizing ? 'resizing' : ''}`}>
               {isExplorerVisible && (
-                <div className="lesson-explorer">
+                <>
+                  <div className="lesson-explorer" style={{ width: `${explorerWidth}px` }}>
                   <div className="explorer-header-row">
                     <div className="explorer-section-title">Lessons</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
@@ -624,11 +697,16 @@ const App = () => {
                     )}
                   </div>
                 </div>
-              )}
+                <div 
+                  className="resizer-bar" 
+                  onMouseDown={() => setIsResizing(true)}
+                />
+              </>
+            )}
 
               <div className="viewer-container">
                 {selectedFile ? (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                     {['mp4', 'mkv', 'webm', 'mov', 'm4v'].includes(selectedFile.type) ? (
                       <>
                         <video 
@@ -657,6 +735,18 @@ const App = () => {
                             if (Math.floor(e.target.currentTime) % 5 === 0) {
                               updateProgress(selectedFile.path, e.target.currentTime, e.target.duration);
                             }
+
+                            // Countdown Logic
+                            if (isAutoplay && e.target.duration > 0) {
+                              const timeLeft = Math.floor(e.target.duration - e.target.currentTime);
+                              if (timeLeft <= 12 && timeLeft > 0) {
+                                if (countdown === null || countdown !== timeLeft) {
+                                  setCountdown(timeLeft);
+                                }
+                              } else if (countdown !== null) {
+                                setCountdown(null);
+                              }
+                            }
                           }}
                         >
                           {subtitleUrl && showSubtitles && (
@@ -669,6 +759,26 @@ const App = () => {
                             />
                           )}
                         </video>
+                        
+                        {countdown !== null && isAutoplay && (
+                          <div className="next-lesson-button" onClick={() => { setCountdown(null); playNext(); }}>
+                            <div className="next-content">
+                              <Play size={16} fill="currentColor" />
+                              <span className="next-label">Next Video</span>
+                              <span className="next-timer">{countdown}s</span>
+                            </div>
+                            <div className="next-progress-container">
+                              <div className="next-progress-fill" style={{ width: `${(countdown / 12) * 100}%` }} />
+                            </div>
+                            <button className="next-cancel-btn" onClick={(e) => {
+                              e.stopPropagation();
+                              setIsAutoplay(false);
+                              setCountdown(null);
+                            }} title="Cancel Autoplay">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
                         
                         {isSubPickerOpen && (
                           <div className="subtitle-picker-overlay" onClick={() => setIsSubPickerOpen(false)}>
@@ -715,7 +825,8 @@ const App = () => {
                   </div>
                 ) : (
                   <div className="empty-state">
-                    <MonitorPlay size={64} style={{ marginBottom: '24px', opacity: 0.1 }} />
+                    <div className="video-empty-visual" />
+                    <MonitorPlay size={48} style={{ marginBottom: '16px', opacity: 0.1 }} />
                     <h3>Select a lesson to begin</h3>
                   </div>
                 )}
@@ -723,20 +834,32 @@ const App = () => {
             </div>
           </>
         ) : (
-          <div className="empty-state">
-            <Library size={80} style={{ marginBottom: '32px', opacity: 0.05, color: '#fff' }} />
-            <h1 style={{ fontWeight: 800, fontSize: '2.5rem', letterSpacing: '-0.03em' }}>Calm Study</h1>
-            <p style={{ maxWidth: '400px', fontSize: '1.1rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <div className="empty-state" style={{ padding: '80px 40px' }}>
+            <div className="welcome-visual" />
+            <h1 style={{ fontWeight: 800, fontSize: '3rem', letterSpacing: '-0.04em' }}>Calm Study</h1>
+            <p style={{ maxWidth: '440px', fontSize: '1.2rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '8px' }}>
               A distraction-free space for your local courses. 
-              Add a folder to start your journey.
             </p>
-            <button className="btn-primary" style={{ marginTop: '32px', padding: '16px 32px', fontSize: '1rem' }} onClick={addCourse}>
-              <FolderPlus size={20} />
+            <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Add a folder to start your learning journey.</p>
+            <button className="btn-primary" style={{ padding: '18px 36px', fontSize: '1.1rem' }} onClick={addCourse}>
+              <FolderPlus size={22} />
               Open Course Folder
             </button>
           </div>
         )}
       </main>
+
+      {toast && (
+        <div className="toast">
+          <div className="toast-icon">
+            <Camera size={20} />
+          </div>
+          <div className="toast-content">
+            <h4>{toast.title}</h4>
+            <p>{toast.message}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

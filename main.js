@@ -139,6 +139,22 @@ ipcMain.handle('save-progress', (event, progress) => {
   fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2));
 });
 
+ipcMain.handle('save-snapshot', async (event, { base64Data, filePath }) => {
+  try {
+    const buffer = Buffer.from(base64Data.split(',')[1], 'base64');
+    fs.writeFileSync(filePath, buffer);
+    return true;
+  } catch (error) {
+    console.error('Error saving snapshot:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('open-path', async (event, filePath) => {
+  const { shell } = require('electron');
+  shell.showItemInFolder(filePath);
+});
+
 ipcMain.handle('load-progress', () => {
   if (fs.existsSync(progressPath)) {
     return JSON.parse(fs.readFileSync(progressPath, 'utf8'));
