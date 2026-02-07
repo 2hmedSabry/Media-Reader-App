@@ -8,16 +8,19 @@ A beautiful, distraction-free desktop application for viewing local media files 
 ## ✨ Features
 
 - 📁 **Folder-based Library** - Add local folders as courses
-- 🎥 **Video Player** - Built-in player with playback controls
+- 📂 **Virtual Groups** - Create custom groups to organize your files without changing the disk structure
+- 🗂️ **Physical Folder Management** - Move files between physical folders directly from the app
+- 🎥 **Video Player** - Built-in player with playback controls and PiP support
 - 📄 **PDF Viewer** - View PDF documents
 - 📝 **Text Viewer** - Read text files and code
 - 🔍 **Quick Search** - Find files instantly with `Ctrl+F`
-- ⏱️ **Progress Tracking** - Automatically saves your progress
-- 🎨 **Multiple Themes** - Default Dark, Oceanic, and Sunset Light
+- ⏱️ **Progress Tracking** - Automatically saves your progress and statistics
+- 🎨 **Multiple Themes** - Default Dark, Oceanic, and Warm Light
 - ⌨️ **Keyboard Shortcuts** - Full keyboard navigation
 - 📸 **Snapshots** - Capture video frames as images
 - 🎯 **Subtitles Support** - Load and display SRT/VTT subtitles
 - 🎛️ **Playback Speed Control** - Adjust video speed (0.5x - 3x)
+- 📊 **Statistics** - Track your daily study time and streaks
 
 ## 🚀 Quick Start
 
@@ -39,6 +42,14 @@ npm install
 # Run in development mode
 npm run dev
 ```
+
+## 🔄 Check for Updates
+
+This project is actively maintained. Check the GitHub repository for the latest version:
+
+[![GitHub Release](https://img.shields.io/github/v/release/2hmedSabry/media-reader?label=Latest%20Version&style=for-the-badge&color=blue)](https://github.com/2hmedSabry/media-reader/releases)
+
+[View Repository](https://github.com/2hmedSabry/media-reader)
 
 ## 📦 Building
 

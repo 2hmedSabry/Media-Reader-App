@@ -76,7 +76,44 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// IPC Handlers
+let currentWatcher = null;
+
+ipcMain.handle('watch-course', (event, dirPath) => {
+  // Stop any existing watcher first
+  if (currentWatcher) {
+    currentWatcher.close();
+    currentWatcher = null;
+  }
+
+  if (!dirPath || !fs.existsSync(dirPath)) return false;
+
+  try {
+    // Native OS events (Method 3) - Very low resource
+    currentWatcher = fs.watch(dirPath, { recursive: true }, (eventType, filename) => {
+      if (mainWindow) {
+        // Debouncing logic will be on the receiver side for simplicity, 
+        // or we can just send the event.
+        mainWindow.webContents.send('course-content-changed');
+      }
+    });
+
+    console.log('Started watching course:', dirPath);
+    return true;
+  } catch (err) {
+    console.error('Watch error:', err);
+    return false;
+  }
+});
+
+ipcMain.handle('stop-watching-course', () => {
+  if (currentWatcher) {
+    currentWatcher.close();
+    currentWatcher = null;
+    console.log('Stopped watching course');
+  }
+  return true;
+});
+
 ipcMain.handle('select-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory']
@@ -101,7 +138,11 @@ ipcMain.handle('read-dir', async (event, dirPath) => {
     const getAllFiles = (dir, rootDir, allFiles = []) => {
       const files = fs.readdirSync(dir, { withFileTypes: true });
       files.forEach(file => {
+        // HIDE SYSTEM FILES (.DS_Store, etc)
+        if (file.name.startsWith('.')) return;
+        
         const fullPath = path.join(dir, file.name);
+        const stats = fs.statSync(fullPath);
         if (file.isDirectory()) {
           getAllFiles(fullPath, rootDir, allFiles);
         } else {
@@ -110,6 +151,7 @@ ipcMain.handle('read-dir', async (event, dirPath) => {
             name: file.name,
             path: fullPath,
             folder: relativeDir || '',
+            size: stats.size,
             type: path.extname(file.name).toLowerCase().replace('.', '')
           });
         }
@@ -206,6 +248,11 @@ ipcMain.handle('open-path', async (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
+ipcMain.handle('open-external', async (event, url) => {
+  const { shell } = require('electron');
+  shell.openExternal(url);
+});
+
 ipcMain.handle('load-progress', () => {
   if (fs.existsSync(progressPath)) {
     return JSON.parse(fs.readFileSync(progressPath, 'utf8'));
@@ -244,5 +291,32 @@ ipcMain.handle('handle-native-drop', async (event, filePath) => {
   } catch (error) {
     console.error('Error handling native drop:', error);
     return null;
+  }
+});
+
+ipcMain.handle('move-file', async (event, { oldPath, newPath }) => {
+  try {
+    // Ensure parent directory exists
+    const dir = path.dirname(newPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.renameSync(oldPath, newPath);
+    return true;
+  } catch (error) {
+    console.error('Error moving file:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('create-dir', async (event, dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    return true;
+  } catch (error) {
+    console.error('Error creating directory:', error);
+    return false;
   }
 });

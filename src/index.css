@@ -170,6 +170,11 @@ body {
 .course-item:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateX(6px);
+}
+
+.course-item:active {
+  transform: scale(0.97) translateX(4px);
 }
 
 .course-item.active {
@@ -551,6 +556,11 @@ input[type="range"] {
 .lesson-item:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateX(6px);
+}
+
+.lesson-item:active {
+  transform: scale(0.98) translateX(4px);
 }
 
 .lesson-item.active {
@@ -1068,26 +1078,106 @@ input[type="range"] {
   background-color: var(--bg-hover);
 }
 
+/* Smooth Animations & Glassmorphism */
+.context-menu {
+  animation: contextMenuAppear 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(17, 20, 29, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transform-origin: top left;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4) !important;
+}
+
+@keyframes contextMenuAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.ctx-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 12px !important;
+  cursor: pointer !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-primary) !important;
+  text-align: left !important;
+  border-radius: 6px !important;
+  font-size: 0.85rem !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  width: 100% !important;
+}
+
+.ctx-item:hover {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  padding-left: 16px !important;
+}
+
+.ctx-item.delete:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
+}
+
+.ctx-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+/* Modal Smoothness */
+.modal-overlay {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.6) !important;
+  transition: all 0.3s ease;
+}
+
+.modal-card {
+  animation: modalScaleUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+@keyframes modalScaleUp {
+  from { 
+    transform: scale(0.85) translateY(30px); 
+    opacity: 0; 
+  }
+  to { 
+    transform: scale(1) translateY(0); 
+    opacity: 1; 
+  }
+}
+
 /* Toast Notification */
 .toast {
   position: fixed;
-  top: 40px;
+  bottom: 40px;
   right: 40px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
+  padding: 16px 24px;
   border-radius: var(--radius-md);
-  padding: 16px 20px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  animation: slideToast 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2000;
-  min-width: 280px;
+  gap: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+  animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(10px);
 }
 
-@keyframes slideToast {
-  from { transform: translateX(120%); opacity: 0; }
+@keyframes toastSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
 

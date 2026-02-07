@@ -40,7 +40,14 @@ import {
   MoreHorizontal,
   BarChart2,
   HardDriveDownload,
-  Layers
+  Layers,
+  ExternalLink,
+  Copy,
+  Star,
+  RefreshCw,
+  FolderOpen,
+  ArrowRightCircle,
+  Scissors
 } from 'lucide-react';
 
 const App = () => {
@@ -72,6 +79,7 @@ const App = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('shortcuts');
   const [fontSize, setFontSize] = useState(parseInt(localStorage.getItem('app-fontSize')) || 16);
+  const [showFileDetails, setShowFileDetails] = useState(localStorage.getItem('app-showFileDetails') !== 'false');
   const videoRef = React.useRef(null);
   const [isPipActive, setIsPipActive] = useState(false);
   
@@ -84,9 +92,18 @@ const App = () => {
   const [creatingGroupCourseId, setCreatingGroupCourseId] = useState(null);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [tempInput, setTempInput] = useState('');
+  const [fileContextMenu, setFileContextMenu] = useState(null);
+  const [groupContextMenu, setGroupContextMenu] = useState(null);
+  const [courseStats, setCourseStats] = useState(null);
+  const [originalProgress, setOriginalProgress] = useState({}); // To revert "Mark All as Completed"
+  const [addToGroupState, setAddToGroupState] = useState(null); // { filePath: string }
 
   useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
+    const handleClickOutside = () => {
+      setContextMenu(null);
+      setFileContextMenu(null);
+      setGroupContextMenu(null);
+    };
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
@@ -126,9 +143,10 @@ const App = () => {
 
   const handleContextMenu = (e, course) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, courseId: course.id });
+    const { x, y } = getMenuPosition(e, 200, 350);
+    setContextMenu({ x, y, courseId: course.id });
   };
-
+  
   const updateCourse = (courseId, updates) => {
     const newCourses = courses.map(c => 
       c.id === courseId ? { ...c, ...updates } : c
@@ -152,6 +170,33 @@ const App = () => {
   };
 
   useEffect(() => {
+    // Method 2: Scoped Watching - only watch active course
+    if (selectedCourse) {
+      window.electron.watchCourse(selectedCourse.path);
+    } else {
+      window.electron.stopWatchingCourse();
+    }
+    
+    return () => {
+      window.electron.stopWatchingCourse();
+    };
+  }, [selectedCourse]);
+
+  useEffect(() => {
+    if (!selectedCourse) return;
+    
+    // Method 1: Debounced Refresh
+    const removeListener = window.electron.onCourseChanged(() => {
+      console.log('Syncing files due to disk change...');
+      loadFiles(selectedCourse.path);
+    });
+    
+    return () => {
+      if (typeof removeListener === 'function') removeListener();
+    };
+  }, [selectedCourse]);
+
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('app-theme', theme);
   }, [theme]);
@@ -159,6 +204,10 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem('app-fontSize', fontSize);
   }, [fontSize]);
+
+  useEffect(() => {
+    localStorage.setItem('app-showFileDetails', showFileDetails);
+  }, [showFileDetails]);
 
   // Statistics Tracking
   const [stats, setStats] = useState(() => {
@@ -574,7 +623,7 @@ const App = () => {
 
   // Grouping
   const categorized = useMemo(() => {
-    const virtualGroups = (selectedCourse?.groups || []).map(g => ({ ...g, lessons: [], resources: [] }));
+    const virtualGroups = (selectedCourse?.groups || []).map(g => ({ ...g, isVirtual: true, lessons: [], resources: [] }));
     const filesInGroups = new Set(virtualGroups.flatMap(g => g.files || []));
 
     const lessons = allFiles.filter(f => ['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type));
@@ -600,18 +649,27 @@ const App = () => {
 
     // Group by physical folder
     const groups = {};
+    const rootLessons = [];
+    const rootResources = [];
+
     lessons.forEach(f => {
       if (filesInGroups.has(f.path)) return;
-      const folder = f.folder || 'Main Folder';
-      if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
-      groups[folder].lessons.push(f);
+      if (!f.folder) {
+        rootLessons.push(f);
+      } else {
+        if (!groups[f.folder]) groups[f.folder] = { lessons: [], resources: [] };
+        groups[f.folder].lessons.push(f);
+      }
     });
     
     resources.forEach(f => {
       if (filesInGroups.has(f.path)) return;
-      const folder = f.folder || 'Main Folder';
-      if (!groups[folder]) groups[folder] = { lessons: [], resources: [] };
-      groups[folder].resources.push(f);
+      if (!f.folder) {
+        rootResources.push(f);
+      } else {
+        if (!groups[f.folder]) groups[f.folder] = { lessons: [], resources: [] };
+        groups[f.folder].resources.push(f);
+      }
     });
     
     // Merge & Sort
@@ -640,10 +698,145 @@ const App = () => {
        }
     });
     
-    const mergedGroups = [...rootVirtualGroups, ...physicalGroups].sort((a, b) => a.name.localeCompare(b.name));
+    // Sorting function for files
+    const sortFiles = (files) => {
+      const mode = selectedCourse?.settings?.sortMode || 'name';
+      return [...files].sort((a, b) => {
+        if (mode === 'name') return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        if (mode === 'type') return a.type.localeCompare(b.type);
+        if (mode === 'size') return (a.size || 0) - (b.size || 0);
+        if (mode === 'length') {
+          const durA = progress[selectedCourse?.id]?.files?.[a.path]?.duration || 0;
+          const durB = progress[selectedCourse?.id]?.files?.[b.path]?.duration || 0;
+          return durA - durB;
+        }
+        return 0;
+      });
+    };
 
-    return { lessons, resources, groups: mergedGroups }; // groups is now array
-  }, [allFiles, viewMode, selectedCourse]);
+    // Sort contents of all groups
+    const finalGroups = [...rootVirtualGroups, ...physicalGroups].map(g => ({
+       ...g,
+       lessons: sortFiles(g.lessons || []),
+       resources: sortFiles(g.resources || []),
+       subGroups: (g.subGroups || []).map(sg => ({
+         ...sg,
+         lessons: sortFiles(sg.lessons || []),
+         resources: sortFiles(sg.resources || [])
+       }))
+    }));
+
+    const mergedGroups = finalGroups.sort((a, b) => {
+       const sortMode = selectedCourse?.settings?.sortMode || 'name';
+       if (sortMode === 'name') return a.name.localeCompare(b.name, undefined, { numeric: true });
+       if (sortMode === 'type') return (a.isVirtual ? 0 : 1) - (b.isVirtual ? 0 : 1);
+       return 0;
+    });
+
+    return { 
+      lessons: sortFiles(lessons), 
+      resources: sortFiles(resources), 
+      rootLessons: sortFiles(rootLessons),
+      rootResources: sortFiles(rootResources),
+      groups: mergedGroups 
+    };
+  }, [allFiles, viewMode, selectedCourse, progress]);
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getMenuPosition = (e, menuWidth = 200, menuHeight = 300) => {
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+    return { x, y };
+  };
+
+  const handleFileContextMenu = (e, file) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const { x, y } = getMenuPosition(e, 220, 240);
+    setFileContextMenu({ x, y, file });
+  };
+
+  const handleGroupContextMenu = (e, group) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const { x, y } = getMenuPosition(e, 220, 280);
+    setGroupContextMenu({ x, y, group });
+  };
+
+  const markCourseAsCompleted = (courseId, forceComplete = true) => {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+
+    if (forceComplete) {
+      // Save original progress
+      setOriginalProgress(prev => ({ ...prev, [courseId]: progress[courseId] }));
+      
+      const newFilesProgress = { ...(progress[courseId]?.files || {}) };
+      allFiles.forEach(f => {
+        if (['mp4', 'm4v', 'webm', 'mov', 'mkv'].includes(f.type)) {
+          newFilesProgress[f.path] = { time: 1000000, duration: 1000000 }; // Fake completion
+        }
+      });
+      
+      const newProgress = {
+        ...progress,
+        [courseId]: { ...progress[courseId], files: newFilesProgress }
+      };
+      setProgress(newProgress);
+      window.electron.saveProgress(newProgress);
+    } else {
+      // Revert from originalProgress
+      if (originalProgress[courseId]) {
+        const newProgress = { ...progress, [courseId]: originalProgress[courseId] };
+        setProgress(newProgress);
+        window.electron.saveProgress(newProgress);
+      }
+    }
+  };
+
+  const convertGroupToFolder = async (group) => {
+    if (!selectedCourse || !group.isVirtual) return;
+    
+    // Build path respecting the parent folder it's in
+    let baseDir = selectedCourse.path;
+    if (group.parentFolder && group.parentFolder !== 'Main Folder') {
+      baseDir = `${selectedCourse.path}/${group.parentFolder}`;
+    }
+    
+    const groupDir = `${baseDir}/${group.name}`;
+    const success = await window.electron.createDir(groupDir);
+    
+    if (success) {
+      for (const filePath of group.files) {
+        const fileName = filePath.split(/[/\\]/).pop();
+        await window.electron.moveFile({ oldPath: filePath, newPath: `${groupDir}/${fileName}` });
+      }
+      
+      // Remove group from course
+      const newGroups = (selectedCourse.groups || []).filter(g => g.id !== group.id);
+      updateCourse(selectedCourse.id, { groups: newGroups });
+      loadFiles(selectedCourse.path);
+      showToast('Converted', `Group converted to physical folder: ${group.name}`);
+    }
+  };
 
   const handleCreateGroup = (arg) => {
     // If called from onClick, arg is Event. If called directly, it's string or null.
@@ -684,6 +877,32 @@ const App = () => {
          return g;
        });
        updateCourse(selectedCourse.id, { groups: newGroups });
+    }
+  };
+
+  const handleRootDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const filePath = e.dataTransfer.getData('filePath');
+    if (!filePath || !selectedCourse) return;
+    
+    // Logic for Virtual vs Physical move
+    // If it's a virtual file (in categorized.groups array but not valid path?), we assume physical for now based on user context
+    
+    const fileName = filePath.split(/[/\\]/).pop();
+    const newPath = `${selectedCourse.path}/${fileName}`;
+    
+    if (filePath === newPath) return; // Already in root
+
+    // Check if moving from a virtual group?
+    // If we move a file that is tracked in a virtual group to root, we might want to remove it from the group?
+    // The current watcher handles physical moves.
+    // If it's purely virtual grouping, we just update the group.
+    
+    // For now, let's assume Physical Move (which is what "Main Folder" implied)
+    const success = await window.electron.moveFile({ oldPath: filePath, newPath });
+    if (success) {
+       showToast('Moved', 'File moved to root');
     }
   };
 
@@ -891,12 +1110,22 @@ const App = () => {
               </div>
               
               <div className="social-links">
-                <a href="https://github.com/2hmedSabry" target="_blank" rel="noopener noreferrer" className="social-icon">
+                <button 
+                  onClick={() => window.electron.openExternal('https://github.com/2hmedSabry')} 
+                  className="social-icon" 
+                  title="GitHub"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
                   <Github size={16} />
-                </a>
-                <a href="https://twitter.com/2hmedsabri" target="_blank" rel="noopener noreferrer" className="social-icon">
+                </button>
+                <button 
+                  onClick={() => window.electron.openExternal('https://twitter.com/2hmedsabri')} 
+                  className="social-icon" 
+                  title="Twitter"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
                   <Twitter size={16} />
-                </a>
+                </button>
                 <div className="developer-info">Ahmed Sabry</div>
               </div>
             </div>
@@ -1038,6 +1267,19 @@ const App = () => {
                           <span style={{ minWidth: '40px' }}>{fontSize}px</span>
                         </div>
                       </div>
+
+                      <div className="settings-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <List size={18} />
+                          <span>Show File Details</span>
+                        </div>
+                        <button 
+                          className={`btn-ghost ${showFileDetails ? 'active-accent' : ''}`}
+                          onClick={() => setShowFileDetails(!showFileDetails)}
+                        >
+                          {showFileDetails ? 'Visible' : 'Hidden'}
+                        </button>
+                      </div>
                     </div>
                   )}
   
@@ -1066,6 +1308,21 @@ const App = () => {
                           {isAutoplay ? 'Enabled' : 'Disabled'}
                         </button>
                       </div>
+
+                      <div className="settings-row" style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                           <span style={{ fontWeight: 600 }}>Media Reader</span>
+                           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Version 1.2.0</span>
+                         </div>
+                         <button 
+                           onClick={() => window.electron.openExternal('https://github.com/2hmedSabry/Media-Reader-App')}
+                           className="btn-ghost"
+                           style={{ color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', border: 'none', background: 'none', padding: '8px', cursor: 'pointer', fontSize: '1rem' }}
+                         >
+                           <Github size={16} /> Check for Updates
+                         </button>
+                      </div>
+
                     </div>
                   )}
                 </div>
@@ -1159,10 +1416,84 @@ const App = () => {
                     </div>
                   </div>
                 
-                  <div className="scroll-area">
+                  <div 
+                    className="scroll-area"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.add('drag-over-root');
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('drag-over-root');
+                    }}
+                    onDrop={(e) => {
+                      e.currentTarget.classList.remove('drag-over-root');
+                      handleRootDrop(e);
+                    }}
+                  >
                     {viewMode === 'folders' ? (
-                      /* Unified Group Loop */
-                      categorized.groups.map(group => {
+                      <>
+                        {/* Root Lessons (Former Main Folder) */}
+                        {categorized.rootLessons.map((file, idx) => (
+                          <div 
+                            key={`root-L-${idx}`} 
+                            className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                            onClick={() => handleFileClick(file)}
+                            onContextMenu={(e) => handleFileContextMenu(e, file)}
+                            draggable="true"
+                            onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
+                          >
+                            <div className="item-main-content">
+                              {selectedFile?.path === file.path ? (
+                                <Volume2 size={14} className="icon playing-icon" style={{ color: 'var(--accent)' }} />
+                              ) : (
+                                <Play size={14} className="icon" style={{ opacity: 0.6 }} />
+                              )}
+                              <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                              {showFileDetails && (
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', marginRight: '8px' }}>
+                                   {formatSize(file.size)}
+                                   {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && ` • ${formatDuration(progress[selectedCourse?.id]?.files?.[file.path]?.duration)}`}
+                                </span>
+                              )}
+                              {!showFileDetails && <span style={{ marginLeft: 'auto' }} />}
+                              {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
+                              {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
+                            </div>
+                            {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
+                              <div className="mini-progress-bar">
+                                <div className="mini-progress-fill" style={{ width: `${(progress[selectedCourse.id].files[file.path].time / progress[selectedCourse.id].files[file.path].duration) * 100}%` }} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Root Resources */}
+                        {categorized.rootResources.map((file, idx) => (
+                          <div 
+                            key={`root-R-${idx}`} 
+                            className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                            onClick={() => handleFileClick(file)}
+                            onContextMenu={(e) => handleFileContextMenu(e, file)}
+                            draggable="true"
+                            onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
+                          >
+                            <div className="item-main-content">
+                              {file.type === 'pdf' ? <FileIcon size={14} style={{ opacity: 0.5 }} /> : <FileText size={14} style={{ opacity: 0.5 }} />}
+                              <span className="file-name" style={{ fontSize: '0.9rem' }}>{file.name}</span>
+                              {showFileDetails && (
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', marginRight: '8px' }}>
+                                   {formatSize(file.size)}
+                                </span>
+                              )}
+                              {!showFileDetails && <span style={{ marginLeft: 'auto' }} />}
+                              {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Unified Group Loop */}
+                        {categorized.groups.map(group => {
                         const isExpanded = expandedFolders.includes(group.id);
                         const isVirtual = group.isVirtual;
                         return (
@@ -1190,6 +1521,7 @@ const App = () => {
                                 e.stopPropagation();
                                 toggleFolder(group.id);
                               }}
+                              onContextMenu={(e) => handleGroupContextMenu(e, group)}
                             >
                               <div className="item-main-content">
                                 {isExpanded ? <ChevronDown size={12} style={{ opacity: 0.4 }} /> : <ChevronRight size={12} style={{ opacity: 0.4 }} />}
@@ -1227,6 +1559,7 @@ const App = () => {
                                           e.stopPropagation();
                                           toggleFolder(subGroup.id);
                                         }}
+                                        onContextMenu={(e) => handleGroupContextMenu(e, subGroup)}
                                         style={{ opacity: 0.8 }}
                                       >
                                         <div className="item-main-content">
@@ -1245,6 +1578,7 @@ const App = () => {
                                               key={`${subGroup.id}-L-${idx}`} 
                                               className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                               onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                              onContextMenu={(e) => handleFileContextMenu(e, file)}
                                               draggable="true"
                                               onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
                                             >
@@ -1257,6 +1591,7 @@ const App = () => {
                                                 <span className="file-name" style={{ fontSize: '0.8rem', ...(selectedFile?.path === file.path ? { color: 'var(--accent)' } : {}) }}>
                                                   {file.name.replace(/\.[^/.]+$/, "")}
                                                 </span>
+                                                {selectedCourse?.favorites?.includes(file.path) && <Star size={10} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                                                 {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
                                               </div>
                                             </div>
@@ -1267,12 +1602,14 @@ const App = () => {
                                               key={`${subGroup.id}-R-${idx}`} 
                                               className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                               onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                              onContextMenu={(e) => handleFileContextMenu(e, file)}
                                               draggable="true"
                                               onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
                                             >
                                               <div className="item-main-content">
                                                 {file.type === 'pdf' ? <FileIcon size={10} style={{ opacity: 0.5 }} /> : <FileText size={10} style={{ opacity: 0.5 }} />}
                                                 <span className="file-name" style={{ fontSize: '0.8rem', opacity: 0.8 }}>{file.name}</span>
+                                                {selectedCourse?.favorites?.includes(file.path) && <Star size={10} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                                               </div>
                                             </div>
                                           ))}
@@ -1288,6 +1625,7 @@ const App = () => {
                                     key={`${group.id}-L-${idx}`} 
                                     className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                     onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                    onContextMenu={(e) => handleFileContextMenu(e, file)}
                                     draggable="true"
                                     onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
                                   >
@@ -1298,6 +1636,7 @@ const App = () => {
                                         <Play size={12} style={{ opacity: 0.4 }} />
                                       )}
                                       <span className="file-name" style={selectedFile?.path === file.path ? { color: 'var(--accent)' } : {}}>{file.name.replace(/\.[^/.]+$/, "")}</span>
+                                      {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                                       {selectedFile?.path === file.path && <CheckCircle2 size={12} style={{ color: 'var(--accent)' }} />}
                                     </div>
                                     {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
@@ -1313,12 +1652,21 @@ const App = () => {
                                     key={`${group.id}-R-${idx}`} 
                                     className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                     onClick={(e) => { e.stopPropagation(); handleFileClick(file); }}
+                                    onContextMenu={(e) => handleFileContextMenu(e, file)}
                                     draggable="true"
                                     onDragStart={(e) => e.dataTransfer.setData('filePath', file.path)}
                                   >
                                     <div className="item-main-content">
                                       {file.type === 'pdf' ? <FileIcon size={12} style={{ opacity: 0.5 }} /> : <FileText size={12} style={{ opacity: 0.5 }} />}
                                       <span className="file-name" style={{ fontSize: '0.85rem' }}>{file.name}</span>
+                                      {showFileDetails && (
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', marginRight: '8px' }}>
+                                          {formatSize(file.size)}
+                                          {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && ` • ${formatDuration(progress[selectedCourse?.id]?.files?.[file.path]?.duration)}`}
+                                        </span>
+                                      )}
+                                      {!showFileDetails && <span style={{ marginLeft: 'auto' }} />}
+                                      {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                                     </div>
                                   </div>
                                 ))}
@@ -1326,14 +1674,16 @@ const App = () => {
                             )}
                           </div>
                         );
-                      })
-                    ) : (
+                      })}
+                    </>
+                  ) : (
                       <>
                         {categorized.lessons.map((file, idx) => (
                           <div 
                             key={idx} 
                             className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                             onClick={() => handleFileClick(file)}
+                            onContextMenu={(e) => handleFileContextMenu(e, file)}
                           >
                             <div className="item-main-content">
                             <span className="lesson-number">{(idx + 1).toString().padStart(2, '0')}</span>
@@ -1342,7 +1692,15 @@ const App = () => {
                             ) : (
                               <Play size={14} className="icon" style={{ opacity: 0.6 }} />
                             )}
-                            <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                             <span className="file-name">{file.name.replace(/\.[^/.]+$/, "")}</span>
+                             {showFileDetails && (
+                               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', marginRight: '8px' }}>
+                                  {formatSize(file.size)}
+                                  {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && ` • ${formatDuration(progress[selectedCourse?.id]?.files?.[file.path]?.duration)}`}
+                               </span>
+                             )}
+                             {!showFileDetails && <span style={{ marginLeft: 'auto' }} />}
+                            {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                             {selectedFile?.path === file.path && <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />}
                           </div>
                           {progress[selectedCourse?.id]?.files?.[file.path]?.duration > 0 && (
@@ -1363,6 +1721,7 @@ const App = () => {
                                 key={`res-${idx}`} 
                                 className={`lesson-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                                 onClick={() => handleFileClick(file)}
+                                onContextMenu={(e) => handleFileContextMenu(e, file)}
                               >
                               <div className="item-main-content">
                           {selectedFile?.path === file.path ? (
@@ -1370,7 +1729,8 @@ const App = () => {
                           ) : (
                             file.type === 'pdf' ? <FileIcon size={14} className="icon" /> : <FileText size={14} className="icon" />
                           )}
-                          <span className="file-name">{file.name}</span>
+                           <span className="file-name">{file.name}</span>
+                          {selectedCourse?.favorites?.includes(file.path) && <Star size={12} style={{ color: '#f59e0b' }} fill="#f59e0b" />}
                         </div>
                       </div>
                             ))}
@@ -1594,17 +1954,14 @@ const App = () => {
       {/* Context Menu */}
       {contextMenu && (
         <div 
+          className="context-menu"
           style={{
             position: 'fixed',
             top: contextMenu.y,
             left: contextMenu.x,
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
             padding: '8px',
-            minWidth: '180px',
+            minWidth: '200px',
             zIndex: 9999,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             display: 'flex',
             flexDirection: 'column',
             gap: '2px'
@@ -1618,65 +1975,218 @@ const App = () => {
                 key={color}
                 onClick={() => { updateCourse(contextMenu.courseId, { color }); setContextMenu(null); }}
                 style={{
-                  width: '16px', height: '16px', borderRadius: '50%', background: color, cursor: 'pointer',
-                  border: '1px solid rgba(255,255,255,0.1)'
+                  width: '18px', height: '18px', borderRadius: '50%', background: color, cursor: 'pointer',
+                  border: '2px solid rgba(255,255,255,0.1)', transition: 'transform 0.2s'
                 }}
+                onMouseEnter={e => e.target.style.transform = 'scale(1.2)'}
+                onMouseLeave={e => e.target.style.transform = 'scale(1)'}
               />
             ))}
+            <div className="ctx-divider" style={{ width: '1px', height: '18px', margin: '0 4px' }} />
             <div 
                onClick={() => { updateCourse(contextMenu.courseId, { color: null }); setContextMenu(null); }}
                title="Reset Color"
-               style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid var(--text-muted)', cursor: 'pointer', position: 'relative' }}
+               style={{ width: '18px', height: '18px', borderRadius: '50%', border: '1px solid var(--text-muted)', cursor: 'pointer', position: 'relative' }}
             >
-              <div style={{ position: 'absolute', top: '7px', left: '-2px', right: '-2px', height: '1px', background: 'var(--text-muted)', transform: 'rotate(45deg)' }} />
+              <div style={{ position: 'absolute', top: '8px', left: '-1px', right: '-1px', height: '1px', background: 'var(--text-muted)', transform: 'rotate(45deg)' }} />
             </div>
           </div>
           
-          <button className="ctx-item" 
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
-            onMouseEnter={e => e.target.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.target.style.background = 'transparent'}
-            onClick={() => { setEditingCourseId(contextMenu.courseId); setTempInput(courses.find(c => c.id === contextMenu.courseId)?.alias || courses.find(c => c.id === contextMenu.courseId)?.name); setContextMenu(null); }}>
+          <button className="ctx-item" onClick={() => { setEditingCourseId(contextMenu.courseId); setTempInput(courses.find(c => c.id === contextMenu.courseId)?.alias || courses.find(c => c.id === contextMenu.courseId)?.name); setContextMenu(null); }}>
             <Edit3 size={14} /> Rename Alias
           </button>
 
-
-          <button className="ctx-item" 
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
-            onMouseEnter={e => e.target.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.target.style.background = 'transparent'}
-            onClick={() => { setTaggingCourseId(contextMenu.courseId); setTempInput(''); setContextMenu(null); }}>
+          <button className="ctx-item" onClick={() => { setTaggingCourseId(contextMenu.courseId); setTempInput(''); setContextMenu(null); }}>
             <Tag size={14} /> Add Tag
           </button>
+
+          <div className="ctx-divider" />
+
+          <button className="ctx-item" onClick={() => { 
+                const course = courses.find(c => c.id === contextMenu.courseId);
+                if (course) window.electron.openPath(course.path);
+                setContextMenu(null);
+            }}>
+            <FolderOpen size={14} /> Open in Finder
+          </button>
+
+          <button className="ctx-item" onClick={() => { 
+                const course = courses.find(c => c.id === contextMenu.courseId);
+                if (course) loadFiles(course.path);
+                setContextMenu(null);
+            }}>
+            <RefreshCw size={14} /> Refresh Folder
+          </button>
+
+          <button className="ctx-item" onClick={() => { 
+                const isDone = originalProgress[contextMenu.courseId];
+                markCourseAsCompleted(contextMenu.courseId, !isDone);
+                setContextMenu(null);
+            }}>
+            <CheckCircle2 size={14} /> {originalProgress[contextMenu.courseId] ? 'Restore Progress' : 'Mark All as Completed'}
+          </button>
+
+          <button className="ctx-item" onClick={() => { 
+                const course = courses.find(c => c.id === contextMenu.courseId);
+                if (course) {
+                  setCourseStats(course);
+                  setIsStatsOpen(true);
+                }
+                setContextMenu(null);
+            }}>
+            <BarChart2 size={14} /> Course Stats
+          </button>
+
+          <div className="ctx-divider" />
           
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-          
-          <button className="ctx-item delete" 
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', cursor: 'pointer', background: 'transparent', border: 'none', color: '#ef4444', textAlign: 'left', borderRadius: '4px', fontSize: '0.9rem', transition: 'background 0.2s' }}
-            onMouseEnter={e => e.target.style.background = 'rgba(239, 68, 68, 0.1)'}
-            onMouseLeave={e => e.target.style.background = 'transparent'}
-            onClick={() => deleteCourse(contextMenu.courseId)}>
+          <button className="ctx-item delete" onClick={() => deleteCourse(contextMenu.courseId)}>
             <Trash2 size={14} /> Remove
+          </button>
+        </div>
+      )}
+
+      {fileContextMenu && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: fileContextMenu.y,
+            left: fileContextMenu.x,
+            padding: '8px',
+            minWidth: '220px',
+            zIndex: 10001,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px'
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button className="ctx-item" onClick={() => { window.electron.openPath(fileContextMenu.file.path); setFileContextMenu(null); }}>
+             <FolderOpen size={14} /> Show in Finder
+          </button>
+          <button className="ctx-item" onClick={() => { window.electron.openExternal(fileContextMenu.file.path); setFileContextMenu(null); }}>
+             <ExternalLink size={14} /> Open with Default App
+          </button>
+          <button className="ctx-item" onClick={() => { navigator.clipboard.writeText(fileContextMenu.file.path); setFileContextMenu(null); showToast('Copied', 'File path copied to clipboard'); }}>
+             <Copy size={14} /> Copy File Path
+          </button>
+          <div className="ctx-divider" />
+          <button className="ctx-item" onClick={() => { 
+              const favorites = selectedCourse.favorites || [];
+              const isFav = favorites.includes(fileContextMenu.file.path);
+              const newFavs = isFav ? favorites.filter(p => p !== fileContextMenu.file.path) : [...favorites, fileContextMenu.file.path];
+              updateCourse(selectedCourse.id, { favorites: newFavs });
+              setFileContextMenu(null);
+              showToast(isFav ? 'Removed' : 'Added', `File ${isFav ? 'removed from' : 'added to'} favorites`);
+          }}>
+             <Star size={14} fill={selectedCourse.favorites?.includes(fileContextMenu.file.path) ? "#f59e0b" : "none"} style={{ color: selectedCourse.favorites?.includes(fileContextMenu.file.path) ? "#f59e0b" : "currentColor"}} /> 
+             {selectedCourse.favorites?.includes(fileContextMenu.file.path) ? 'Remove from Favorites' : 'Add to Favorites'}
+          </button>
+          <button className="ctx-item" onClick={() => { setAddToGroupState(fileContextMenu.file.path); setFileContextMenu(null); }}>
+             <FolderPlus size={14} /> Add to File / Group
+          </button>
+          <button className="ctx-item" onClick={() => { updateProgress(fileContextMenu.file.path, 0, 0); setFileContextMenu(null); showToast('Reset', 'Progress reset for this file'); }}>
+             <RefreshCw size={14} /> Mark as Unplayed
+          </button>
+        </div>
+      )}
+
+      {groupContextMenu && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: groupContextMenu.y,
+            left: groupContextMenu.x,
+            padding: '8px',
+            minWidth: '220px',
+            zIndex: 10001,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px'
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {groupContextMenu.group.isVirtual ? (
+            <>
+               <button className="ctx-item" onClick={() => { 
+                   setEditingCourseId('GROUP_RENAME'); // Reusing temp state
+                   setCreatingGroupCourseId({ groupId: groupContextMenu.group.id });
+                   setTempInput(groupContextMenu.group.name); 
+                   setGroupContextMenu(null); 
+               }}>
+                  <Edit3 size={14} /> Rename Group
+               </button>
+               <button className="ctx-item" onClick={() => { convertGroupToFolder(groupContextMenu.group); setGroupContextMenu(null); }}>
+                  <ArrowRightCircle size={14} /> Convert to Physical Folder
+               </button>
+               <button className="ctx-item delete" onClick={() => { 
+                   const newGroups = selectedCourse.groups.filter(g => g.id !== groupContextMenu.group.id);
+                   updateCourse(selectedCourse.id, { groups: newGroups });
+                   setGroupContextMenu(null);
+               }}>
+                  <Trash2 size={14} /> Delete Group
+               </button>
+            </>
+          ) : (
+            <button className="ctx-item" onClick={() => { handleCreateGroup(groupContextMenu.group.name); setGroupContextMenu(null); }}>
+               <FolderPlus size={14} /> Create Sub-group here
+            </button>
+          )}
+          <div className="ctx-divider" />
+          <div style={{ padding: '6px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em' }}>SORT BY</div>
+          <button className={`ctx-item ${selectedCourse.settings?.sortMode === 'name' ? 'active-accent' : ''}`} onClick={() => { updateCourse(selectedCourse.id, { settings: { ...selectedCourse.settings, sortMode: 'name' } }); setGroupContextMenu(null); }}>
+             Name
+          </button>
+          <button className={`ctx-item ${selectedCourse.settings?.sortMode === 'type' ? 'active-accent' : ''}`} onClick={() => { updateCourse(selectedCourse.id, { settings: { ...selectedCourse.settings, sortMode: 'type' } }); setGroupContextMenu(null); }}>
+             Type
+          </button>
+          <button className={`ctx-item ${selectedCourse.settings?.sortMode === 'size' ? 'active-accent' : ''}`} onClick={() => { updateCourse(selectedCourse.id, { settings: { ...selectedCourse.settings, sortMode: 'size' } }); setGroupContextMenu(null); }}>
+             Size
+          </button>
+          <button className={`ctx-item ${selectedCourse.settings?.sortMode === 'length' ? 'active-accent' : ''}`} onClick={() => { updateCourse(selectedCourse.id, { settings: { ...selectedCourse.settings, sortMode: 'length' } }); setGroupContextMenu(null); }}>
+             Length (Duration)
           </button>
         </div>
       )}
 
       {/* Rename Modal */}
       {editingCourseId && (
-        <div className="modal-overlay" onClick={() => setEditingCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Rename Application Alias</h3>
+        <div className="modal-overlay" onClick={() => { setEditingCourseId(null); setCreatingGroupCourseId(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '24px', borderRadius: '16px', width: '300px' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem', fontWeight: 700 }}>{editingCourseId === 'GROUP_RENAME' ? 'Rename Virtual Group' : 'Rename Alias'}</h3>
             <input 
               value={tempInput}
               onChange={e => setTempInput(e.target.value)}
               autoFocus
               className="search-input" 
-              style={{ width: '100%', marginBottom: '16px', background: 'var(--bg-deep)', padding: '10px' }}
+              style={{ width: '100%', marginBottom: '16px', background: 'var(--bg-deep)', padding: '12px' }}
               placeholder="Enter new name..."
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  if (editingCourseId === 'GROUP_RENAME') {
+                    const newGroups = selectedCourse.groups.map(g => g.id === creatingGroupCourseId.groupId ? { ...g, name: tempInput } : g);
+                    updateCourse(selectedCourse.id, { groups: newGroups });
+                  } else {
+                    updateCourse(editingCourseId, { alias: tempInput });
+                  }
+                  setEditingCourseId(null);
+                  setCreatingGroupCourseId(null);
+                }
+              }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="btn-ghost" onClick={() => setEditingCourseId(null)}>Cancel</button>
-              <button className="btn-primary" onClick={() => { updateCourse(editingCourseId, { alias: tempInput }); setEditingCourseId(null); }}>Save</button>
+              <button className="btn-ghost" onClick={() => { setEditingCourseId(null); setCreatingGroupCourseId(null); }}>Cancel</button>
+              <button className="btn-primary" onClick={() => { 
+                  if (editingCourseId === 'GROUP_RENAME') {
+                    const newGroups = selectedCourse.groups.map(g => g.id === creatingGroupCourseId.groupId ? { ...g, name: tempInput } : g);
+                    updateCourse(selectedCourse.id, { groups: newGroups });
+                  } else {
+                    updateCourse(editingCourseId, { alias: tempInput });
+                  }
+                  setEditingCourseId(null);
+                  setCreatingGroupCourseId(null);
+              }}>Save</button>
             </div>
           </div>
         </div>
@@ -1684,26 +2194,27 @@ const App = () => {
 
       {/* Tag Modal */}
       {taggingCourseId && (
-        <div className="modal-overlay" onClick={() => setTaggingCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Manage Tags</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+        <div className="modal-overlay" onClick={() => setTaggingCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '24px', borderRadius: '16px', width: '340px' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem', fontWeight: 700 }}>Manage Tags</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
               {courses.find(c => c.id === taggingCourseId)?.tags?.map(tag => (
-                <span key={tag} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span key={tag} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(var(--accent-rgb), 0.1)' }}>
                   {tag}
-                  <X size={12} style={{ cursor: 'pointer' }} onClick={() => {
+                  <X size={14} style={{ cursor: 'pointer', opacity: 0.6 }} onClick={() => {
                      const currentTags = courses.find(c => c.id === taggingCourseId)?.tags || [];
                      updateCourse(taggingCourseId, { tags: currentTags.filter(t => t !== tag) });
                   }} />
                 </span>
               ))}
+              {(!courses.find(c => c.id === taggingCourseId)?.tags?.length) && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No tags added yet</div>}
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
               <input 
                 value={tempInput}
                 onChange={e => setTempInput(e.target.value)}
                 className="search-input" 
-                style={{ flex: 1, background: 'var(--bg-deep)', padding: '8px' }}
+                style={{ flex: 1, background: 'var(--bg-deep)', padding: '10px' }}
                 placeholder="New tag..."
                 onKeyDown={e => {
                   if (e.key === 'Enter' && tempInput.trim()) {
@@ -1715,7 +2226,7 @@ const App = () => {
                   }
                 }}
               />
-              <button className="btn-primary" onClick={() => {
+              <button className="btn-primary" style={{ minWidth: '44px' }} onClick={() => {
                  if (tempInput.trim()) {
                      const currentTags = courses.find(c => c.id === taggingCourseId)?.tags || [];
                      if (!currentTags.includes(tempInput.trim())) {
@@ -1723,9 +2234,9 @@ const App = () => {
                        setTempInput('');
                      }
                  }
-              }}><Check size={16} /></button>
+              }}><Check size={18} /></button>
             </div>
-            <div style={{ marginTop: '16px', textAlign: 'right' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                <button className="btn-ghost" onClick={() => setTaggingCourseId(null)}>Done</button>
             </div>
           </div>
@@ -1733,10 +2244,10 @@ const App = () => {
       )}
 
       {/* Create Group Modal */}
-      {creatingGroupCourseId && (
-        <div className="modal-overlay" onClick={() => setCreatingGroupCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '12px', width: '300px', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>Create Virtual Group</h3>
+      {creatingGroupCourseId && !editingCourseId && (
+        <div className="modal-overlay" onClick={() => setCreatingGroupCourseId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '24px', borderRadius: '16px', width: '320px' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: 700 }}>New Virtual Group</h3>
             <input 
               value={tempInput}
               onChange={e => setTempInput(e.target.value)}
@@ -1757,6 +2268,8 @@ const App = () => {
                           id: Date.now().toString(), 
                           name: tempInput.trim(), 
                           files: [],
+                          isVirtual: true,
+                          subGroups: [],
                           parentFolder: creatingGroupCourseId.parentFolder
                        }];
                        updateCourse(course.id, { groups: newGroups });
@@ -1781,6 +2294,8 @@ const App = () => {
                           id: Date.now().toString(), 
                           name: tempInput.trim(), 
                           files: [],
+                          isVirtual: true,
+                          subGroups: [],
                           parentFolder: creatingGroupCourseId.parentFolder
                        }];
                        updateCourse(course.id, { groups: newGroups });
@@ -1791,6 +2306,99 @@ const App = () => {
               }}>Create</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add to Group Modal */}
+      {addToGroupState && (
+        <div className="modal-overlay" onClick={() => setAddToGroupState(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+           <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '24px', borderRadius: '16px', width: '320px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+             <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: 700 }}>Add to Group</h3>
+             
+             <div className="group-list" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                {/* Virtual Groups */}
+                {(selectedCourse?.groups || []).filter(g => g.isVirtual).map(g => (
+                   <div 
+                     key={g.id} 
+                     className="group-item-select"
+                     style={{ padding: '12px', background: 'var(--bg-deep)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid transparent', transition: 'all 0.2s' }}
+                     onMouseOver={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                     onMouseOut={e => e.currentTarget.style.borderColor = 'transparent'}
+                     onClick={() => {
+                         const groupId = g.id;
+                         const filePath = addToGroupState;
+                         
+                         const currentGroups = selectedCourse.groups || [];
+                         const newGroups = currentGroups.map(grp => {
+                            if (grp.id === groupId) {
+                              return { ...grp, files: [...(grp.files || []), filePath] };
+                            }
+                            if (grp.files && grp.files.includes(filePath)) {
+                               return { ...grp, files: grp.files.filter(f => f !== filePath) };
+                            }
+                            return grp;
+                         });
+                         
+                         updateCourse(selectedCourse.id, { groups: newGroups });
+                         showToast('Added', `Added to ${g.name}`);
+                         setAddToGroupState(null);
+                     }}
+                   >
+                      <Folder size={18} style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontWeight: 500 }}>{g.name} <span style={{fontSize: '0.7em', opacity: 0.6}}>(Virtual)</span></span>
+                   </div>
+                ))}
+
+                <div className="ctx-divider" style={{ margin: '8px 0' }} />
+
+                {/* Physical Folders */}
+                {(() => {
+                   const folders = [...new Set(allFiles.map(f => f.folder).filter(f => f))].sort();
+                   return folders.map(folder => (
+                     <div 
+                       key={folder} 
+                       className="group-item-select"
+                       style={{ padding: '12px', background: 'var(--bg-deep)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid transparent', transition: 'all 0.2s' }}
+                       onMouseOver={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                       onMouseOut={e => e.currentTarget.style.borderColor = 'transparent'}
+                       onClick={async () => {
+                           const filePath = addToGroupState;
+                           const fileName = filePath.split(/[/\\]/).pop();
+                           const newPath = `${selectedCourse.path}/${folder}/${fileName}`;
+                           
+                           if (filePath === newPath) {
+                              setAddToGroupState(null);
+                              return;
+                           }
+
+                           const success = await window.electron.moveFile({ oldPath: filePath, newPath });
+                           if (success) {
+                              showToast('Moved', `Moved to ${folder}`);
+                              setAddToGroupState(null);
+                           }
+                       }}
+                     >
+                        <FolderOpen size={18} style={{ opacity: 0.6 }} />
+                        <span style={{ fontWeight: 500 }}>{folder}</span>
+                     </div>
+                   ));
+                })()}
+
+                {(!selectedCourse?.groups || !selectedCourse.groups.some(g => g.isVirtual)) && (!allFiles.some(f => f.folder)) && (
+                   <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px', fontSize: '0.9rem' }}>No groups or folders found.</div>
+                )}
+             </div>
+
+             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+               <button className="btn-ghost" onClick={() => setAddToGroupState(null)}>Cancel</button>
+               <button className="btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => {
+                   setCreatingGroupCourseId({ courseId: selectedCourse.id, parentFolder: null });
+                   setAddToGroupState(null);
+               }}>
+                 <FolderPlus size={16} style={{ marginRight: '6px' }} /> New Group
+               </button>
+             </div>
+           </div>
         </div>
       )}
 
@@ -1821,13 +2429,14 @@ const App = () => {
         const fillPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
 
         return (
-        <div className="modal-overlay" onClick={() => setIsStatsOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '32px', borderRadius: '24px', width: '600px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <BarChart2 size={24} style={{ color: 'var(--accent)' }} /> Your Progress
+        <div className="modal-overlay" onClick={() => { setIsStatsOpen(false); setCourseStats(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '32px', borderRadius: '24px', width: '640px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '14px', letterSpacing: '-0.02em' }}>
+                <BarChart2 size={28} style={{ color: 'var(--accent)' }} /> 
+                {courseStats ? `${courseStats.alias || courseStats.name}` : 'Overall Progress'}
               </h2>
-              <button className="icon-btn" onClick={() => setIsStatsOpen(false)}><X size={20} /></button>
+              <button className="icon-btn" style={{ background: 'var(--bg-elevated)' }} onClick={() => { setIsStatsOpen(false); setCourseStats(null); }}><X size={20} /></button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
@@ -1840,8 +2449,8 @@ const App = () => {
                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent)' }}>{stats.streaks} <span style={{fontSize:'1rem'}}>days</span></div>
                </div>
                <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '16px', textAlign: 'center' }}>
-                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Today's Focus</div>
-                 <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round((stats.daily[new Date().toISOString().split('T')[0]] || 0) / 60)} <span style={{fontSize:'1rem'}}>m</span></div>
+                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Lessons Done</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{courseStats ? Object.keys(progress[courseStats.id]?.files || {}).length : '---'}</div>
                </div>
             </div>
 
@@ -1880,12 +2489,12 @@ const App = () => {
 
       {toast && (
         <div className="toast">
-          <div className="toast-icon">
-            <Camera size={20} />
+          <div className="toast-icon" style={{ background: 'var(--accent-soft)', padding: '8px', borderRadius: '10px', display: 'flex' }}>
+            <CheckCircle2 size={20} style={{ color: 'var(--accent)' }} />
           </div>
           <div className="toast-content">
-            <h4>{toast.title}</h4>
-            <p>{toast.message}</p>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{toast.title}</h4>
+            <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{toast.message}</p>
           </div>
         </div>
       )}
