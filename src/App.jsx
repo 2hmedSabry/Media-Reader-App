@@ -97,6 +97,7 @@ const App = () => {
   const [courseStats, setCourseStats] = useState(null);
   const [originalProgress, setOriginalProgress] = useState({}); // To revert "Mark All as Completed"
   const [addToGroupState, setAddToGroupState] = useState(null); // { filePath: string }
+  const [updateInfo, setUpdateInfo] = useState(null);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -293,6 +294,18 @@ const App = () => {
       ]);
       setCourses(loadedCourses);
       setProgress(loadedProgress || {});
+
+      // Check for updates shortly after launch
+      setTimeout(async () => {
+        try {
+          const update = await window.electron.checkUpdates();
+          if (update && update.available) {
+            setUpdateInfo(update);
+          }
+        } catch (err) {
+          console.error('Update check failed:', err);
+        }
+      }, 3000);
     };
     init();
   }, []);
@@ -1387,6 +1400,26 @@ const App = () => {
                   <div className="explorer-header-row">
                     <div className="explorer-section-title">Lessons</div>
                     <div style={{ display: 'flex', gap: '4px' }}>
+                      {updateInfo && (
+                        <button 
+                          className="view-toggle-btn active-accent" 
+                          onClick={() => window.electron.openExternal(updateInfo.url)}
+                          title={`Update Available: v${updateInfo.version}`}
+                          style={{ position: 'relative', color: '#fbbf24' }}
+                        >
+                          <HardDriveDownload size={16} />
+                          <span style={{ 
+                            position: 'absolute', 
+                            top: '4px', 
+                            right: '4px', 
+                            width: '8px', 
+                            height: '8px', 
+                            background: '#ef4444', 
+                            borderRadius: '50%',
+                            border: '2px solid var(--bg-surface)'
+                          }} />
+                        </button>
+                      )}
                       <button 
                          className="view-toggle-btn"
                          onClick={handleCreateGroup}

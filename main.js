@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 let mainWindow;
 
@@ -319,4 +320,62 @@ ipcMain.handle('create-dir', async (event, dirPath) => {
     console.error('Error creating directory:', error);
     return false;
   }
+});
+
+// --- FREE UPDATE CHECKER (GITHUB) ---
+ipcMain.handle('check-updates', async () => {
+  // Replace this with your actual GitHub username/repo
+  const GITHUB_REPO = '2hmedSabry/calm-study-Project-'; 
+  const currentVersion = app.getVersion();
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: `/repos/${GITHUB_REPO}/releases/latest`,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Electron-Media-Reader-Update-Checker',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    };
+
+    const req = https.get(options, (res) => {
+      if (res.statusCode !== 200) {
+        resolve({ available: false, error: `GitHub API returned ${res.statusCode}` });
+        return;
+      }
+
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const release = JSON.parse(data);
+          const latestVersion = release.tag_name.replace('v', '');
+          
+          if (latestVersion !== currentVersion) {
+            resolve({
+              available: true,
+              version: latestVersion,
+              url: release.html_url,
+              notes: release.body
+            });
+          } else {
+            resolve({ available: false });
+          }
+        } catch (e) {
+          resolve({ available: false, error: 'Error parsing GitHub response' });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      resolve({ available: false, error: err.message });
+    });
+    
+    // Set a timeout for the request
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve({ available: false, error: 'Update check timed out' });
+    });
+  });
 });

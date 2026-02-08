@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('course-content-changed', listener);
     return () => ipcRenderer.removeListener('course-content-changed', listener);
   },
+  checkUpdates: () => ipcRenderer.invoke('check-updates'),
 });
