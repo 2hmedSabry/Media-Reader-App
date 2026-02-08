@@ -325,7 +325,7 @@ ipcMain.handle('create-dir', async (event, dirPath) => {
 // --- FREE UPDATE CHECKER (GITHUB) ---
 ipcMain.handle('check-updates', async () => {
   // Replace this with your actual GitHub username/repo
-  const GITHUB_REPO = '2hmedSabry/calm-study-Project-'; 
+  const GITHUB_REPO = '2hmedSabry/Media-Reader-App'; 
   const currentVersion = app.getVersion();
 
   return new Promise((resolve) => {

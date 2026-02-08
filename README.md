@@ -5,6 +5,16 @@ A beautiful, distraction-free desktop application for viewing local media files 
 ![Media Reader](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+## 📥 Download
+
+Get the latest version of Media Reader for your operating system:
+
+| Platform | Download |
+| :------- | :------- |
+| **macOS** | [🍎 Download .dmg](https://github.com/2hmedSabry/Media-Reader-App/releases/download/v1.0.0/Media.Reader-1.0.0-arm64.dmg) (Apple Silicon) / [Manual .dmg](https://github.com/2hmedSabry/Media-Reader-App/releases/download/v1.0.0/Media.Reader-1.0.0.dmg) (Intel) |
+| **Windows**| [🪟 Download .exe](https://github.com/2hmedSabry/Media-Reader-App/releases/latest) (Coming soon via Release) |
+| **Linux**  | [🐧 Download .AppImage](https://github.com/2hmedSabry/Media-Reader-App/releases/latest) |
+
 ## ✨ Features
 
 - 📁 **Folder-based Library** - Add local folders as courses
@@ -33,8 +43,8 @@ A beautiful, distraction-free desktop application for viewing local media files 
 
 ```bash
 # Clone the repository
-git clone https://github.com/2hmedSabry/media-reader.git
-cd media-reader
+git clone https://github.com/2hmedSabry/Media-Reader-App.git
+cd Media-Reader-App
 
 # Install dependencies
 npm install
@@ -47,9 +57,9 @@ npm run dev
 
 This project is actively maintained. Check the GitHub repository for the latest version:
 
-[![GitHub Release](https://img.shields.io/github/v/release/2hmedSabry/media-reader?label=Latest%20Version&style=for-the-badge&color=blue)](https://github.com/2hmedSabry/media-reader/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/2hmedSabry/Media-Reader-App?label=Latest%20Version&style=for-the-badge&color=blue)](https://github.com/2hmedSabry/Media-Reader-App/releases)
 
-[View Repository](https://github.com/2hmedSabry/media-reader)
+[View Repository](https://github.com/2hmedSabry/Media-Reader-App)
 
 ## 📦 Building
 
